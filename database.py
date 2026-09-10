@@ -125,7 +125,7 @@ def get_it_usuario_by_username(username):
     return None
 
 
-def create_it_usuario(nombre, username, password, es_admin=False):
+def create_it_usuario(nombre, username, password, es_admin=False, categorias_acceso=None):
     username = username.strip().lower()
     if get_it_usuario_by_username(username):
         raise ValueError(f"Ya existe un usuario de TI con el nombre de usuario '{username}'.")
@@ -133,17 +133,78 @@ def create_it_usuario(nombre, username, password, es_admin=False):
     doc_ref.set({
         "nombre": nombre.strip(), "username": username, "password_hash": hash_password(password),
         "es_admin": bool(es_admin), "activo": True,
+        "categorias_acceso": list(categorias_acceso) if categorias_acceso else [],
         "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
     return doc_ref.id
 
 
 def set_it_usuario_activo(uid, activo):
+    if not activo:
+        _validar_no_es_ultimo_admin_activo(uid, motivo="desactivar")
     get_client().collection("it_usuarios").document(uid).update({"activo": bool(activo)})
 
 
 def update_it_usuario_password(uid, password):
     get_client().collection("it_usuarios").document(uid).update({"password_hash": hash_password(password)})
+
+
+def _admins_activos(excluir_uid=None):
+    """Lista de administradores activos, opcionalmente excluyendo un uid
+    (para poder preguntar '¿si le quito el admin a este, queda alguien más
+    como administrador?')."""
+    return [
+        u for u in list_it_usuarios(solo_activos=True)
+        if u.get("es_admin") and u["id"] != excluir_uid
+    ]
+
+
+def _validar_no_es_ultimo_admin_activo(uid, motivo):
+    """Evita dejar el sistema sin ningún administrador activo (nadie podría
+    volver a gestionar el equipo). 'motivo' se usa solo para el mensaje de
+    error (p. ej. 'quitar el admin a', 'desactivar', 'eliminar')."""
+    usuario = get_it_usuario(uid)
+    if not usuario or not usuario.get("es_admin") or not usuario.get("activo", True):
+        return  # no era admin activo, no hay riesgo de dejar el equipo sin administrador
+    if not _admins_activos(excluir_uid=uid):
+        raise ValueError(
+            f"No puedes {motivo} a '{usuario.get('nombre')}': es el único administrador activo. "
+            "Primero vuelve administrador a otro técnico."
+        )
+
+
+def update_it_usuario_perfil(uid, nombre, username, categorias_acceso=None):
+    """Edita nombre, usuario (login) y las categorías de tickets que puede
+    atender. No toca contraseña, rol ni estado activo/inactivo (ver las
+    funciones dedicadas para eso)."""
+    nombre = (nombre or "").strip()
+    username = (username or "").strip().lower()
+    if not nombre or not username:
+        raise ValueError("El nombre y el usuario no pueden quedar vacíos.")
+    existente = get_it_usuario_by_username(username)
+    if existente and existente["id"] != uid:
+        raise ValueError(f"Ya existe otro usuario de TI con el nombre de usuario '{username}'.")
+    get_client().collection("it_usuarios").document(uid).update({
+        "nombre": nombre, "username": username,
+        "categorias_acceso": list(categorias_acceso) if categorias_acceso else [],
+    })
+
+
+def set_it_usuario_admin(uid, es_admin):
+    """Sube o quita el permiso de administrador. No deja quitarle el admin
+    al único administrador activo que queda."""
+    if not es_admin:
+        _validar_no_es_ultimo_admin_activo(uid, motivo="quitarle el admin")
+    get_client().collection("it_usuarios").document(uid).update({"es_admin": bool(es_admin)})
+
+
+def delete_it_usuario(uid):
+    """Elimina permanentemente a un usuario de TI (no solo desactivarlo). Los
+    tickets que haya tenido asignados conservan el nombre en su historial,
+    así que no se pierde la trazabilidad. No deja eliminar al único
+    administrador activo que queda."""
+    _validar_no_es_ultimo_admin_activo(uid, motivo="eliminar")
+    get_client().collection("it_usuarios").document(uid).delete()
 
 
 # ---------------------------------------------------------------------------
