@@ -50,7 +50,8 @@ with tab_nuevo:
     sufijo = st.session_state["ticket_form_key"]
 
     nombre = st.text_input("Nombre completo *", key=f"ti_nombre_{sufijo}")
-    contacto = st.text_input("Correo o extensión para contactarte", key=f"ti_contacto_{sufijo}")
+    correo = st.text_input("Correo electrónico *", key=f"ti_correo_{sufijo}")
+    telefono = st.text_input("Teléfono *", key=f"ti_telefono_{sufijo}")
 
     empresa = st.selectbox("Empresa", EMPRESAS_TICKET, key=f"ti_empresa_{sufijo}")
     areas_disponibles = AREAS_POR_EMPRESA.get(empresa, [])
@@ -71,8 +72,10 @@ with tab_nuevo:
     )
 
     if st.button("📨 Enviar solicitud", key=f"ti_enviar_{sufijo}", use_container_width=True):
-        if not nombre.strip() or not descripcion.strip():
-            st.error("Escribe al menos tu nombre y la descripción del problema.")
+        if not nombre.strip() or not correo.strip() or not telefono.strip() or not descripcion.strip():
+            st.error("Completa tu nombre, correo, teléfono y la descripción del problema.")
+        elif not db.correo_es_valido(correo):
+            st.error("Escribe un correo electrónico válido (ej. nombre@dominio.com).")
         else:
             foto_b64 = foto_nombre = foto_tipo = None
             error_foto = None
@@ -86,7 +89,7 @@ with tab_nuevo:
                 st.error(error_foto)
             else:
                 numero = db.create_ticket(
-                    nombre, contacto, area_final, categoria, descripcion,
+                    nombre, correo, telefono, area_final, categoria, descripcion,
                     empresa=empresa, foto_b64=foto_b64, foto_nombre=foto_nombre, foto_tipo=foto_tipo,
                 )
                 st.session_state["ticket_form_key"] += 1  # limpia el formulario (nuevos keys = nuevos widgets)
