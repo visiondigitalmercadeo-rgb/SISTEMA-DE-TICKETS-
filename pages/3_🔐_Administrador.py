@@ -60,7 +60,7 @@ def _fila_usuario(t, es_yo):
                 nombre_ed = st.text_input("Nombre completo", value=t["nombre"], key=f"ed_nombre_{tid}")
                 username_ed = st.text_input("Usuario", value=t["username"], key=f"ed_user_{tid}")
                 correo_ed = st.text_input(
-                    "Correo (para mandarle la Orden de Solicitud cuando le asignan un ticket)",
+                    "Correo (para mandarle la Orden de Trabajo cuando le asignan un ticket)",
                     value=t.get("correo") or "", key=f"ed_correo_{tid}",
                 )
                 accesos_ed = st.multiselect(
@@ -174,7 +174,7 @@ with tab_usuarios:
                 key="nuevo_es_admin",
             )
             correo_nuevo = st.text_input(
-                "Correo (opcional, para mandarle la Orden de Solicitud al asignarle un ticket)", key="nuevo_correo",
+                "Correo (opcional, para mandarle la Orden de Trabajo al asignarle un ticket)", key="nuevo_correo",
             )
             accesos_nuevo = st.multiselect(
                 "Categorías que atiende (vacío = todas)", CATEGORIAS_TICKET, key="nuevo_accesos",
@@ -254,7 +254,7 @@ with tab_qr:
 with tab_correos:
     st.caption(
         "Cada vez que un solicitante reporta un problema, se manda automáticamente un correo (con la "
-        "Orden de Solicitud en PDF adjunta) a la lista de abajo (según la categoría del ticket) y, si "
+        "Orden de Trabajo en PDF adjunta) a la lista de abajo (según la categoría del ticket) y, si "
         "el solicitante dejó un correo válido, también se le confirma a él que su ticket quedó "
         "registrado. Cuando después alguien del equipo toma el ticket, se le vuelve a mandar la orden "
         "directo a su correo (el que le pongas en la pestaña 'Usuarios' → editar a cada técnico)."
