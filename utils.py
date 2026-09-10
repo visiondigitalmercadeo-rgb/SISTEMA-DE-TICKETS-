@@ -11,6 +11,19 @@ from fpdf import FPDF
 from config import EMPRESA_NOMBRE, LOGO_ORDEN_VISION_DIGITAL_PATH, LOGO_POR_EMPRESA
 
 
+def formatear_horas(horas):
+    """Convierte un número de horas a un texto corto y legible — en horas
+    si es menos de 2 días, o en días con un decimal si es más (para no
+    mostrar '620 h' cuando es más claro decir '25.8 d'). Usado en los KPIs
+    del Tablero y del Dashboard (ver pages/1_Sistema_IT.py y
+    pages/2_Dashboard.py)."""
+    if horas is None:
+        return "—"
+    if horas < 48:
+        return f"{horas:.0f} h"
+    return f"{horas / 24:.1f} d"
+
+
 def archivo_a_b64(archivo_subido, max_bytes: int):
     """Convierte un archivo de st.file_uploader a base64. Retorna
     (b64_str, nombre, tipo) o lanza ValueError si pesa más de lo permitido
