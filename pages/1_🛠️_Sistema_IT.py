@@ -37,6 +37,55 @@ def _puede_atender(tecnico, categoria):
     return not accesos or categoria in accesos
 
 
+def _horas_en_estado_actual(t):
+    """Cuánto lleva 'ticket' en su columna ACTUAL (desde que entró a ese
+    estado, no desde que se creó) — mismo cálculo que el promedio de
+    'Tickets de este mes' de arriba (ver database.calcular_kpis_tablero),
+    pero por ticket individual. None si no se pudo calcular."""
+    entrada_estado = db.fecha_entro_a_estado_actual(t)
+    if not entrada_estado:
+        return None
+    try:
+        return max((datetime.now() - datetime.fromisoformat(entrada_estado)).total_seconds() / 3600, 0.0)
+    except ValueError:
+        return None
+
+
+def _fecha_corta_export(iso_txt):
+    if not iso_txt or len(iso_txt) < 10:
+        return "—"
+    return f"{iso_txt[8:10]}/{iso_txt[5:7]}/{iso_txt[0:4]}"
+
+
+def _filas_exportables_tablero(tickets):
+    """Arma la lista de filas (una por ticket) para los botones 'Descargar
+    Excel'/'Descargar Word' del tablero (ver utils.tablero_excel_bytes /
+    tablero_word_bytes) — con todo ya formateado a texto, listo para
+    escribir directo en la hoja/tabla."""
+    filas = []
+    for t in tickets:
+        numero = t.get("numero")
+        filas.append({
+            "numero": f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____",
+            "categoria": t.get("categoria") or "—",
+            "urgencia": t.get("urgencia") or "Normal",
+            "estado": t.get("estado") or "—",
+            "tiempo_en_estado": formatear_horas(_horas_en_estado_actual(t)),
+            "empresa": t.get("empresa") or "—",
+            "area": t.get("area") or "—",
+            "asignado_a": t.get("asignado_a_nombre") or "Sin asignar",
+            "solicitante": t.get("nombre_solicitante") or "—",
+            # "contacto" es el campo viejo (antes de separar correo y
+            # teléfono) — se usa como respaldo solo para tickets creados
+            # antes de ese cambio.
+            "correo": t.get("correo") or t.get("contacto") or "—",
+            "telefono": t.get("telefono") or "—",
+            "descripcion": t.get("descripcion") or "—",
+            "creado_en": _fecha_corta_export(t.get("creado_en")),
+        })
+    return filas
+
+
 def _dibujar_kpis():
     todos = db.list_tickets()
     # Los que ya se archivaron a Historial no deben contar en "tiempo que
@@ -75,6 +124,40 @@ def _dibujar_tablero():
     tickets = [t for t in tickets if not db.ticket_es_historico(t)]
     tecnicos_activos = db.list_it_usuarios(solo_activos=True)
 
+    # --- Descargar los datos que están AHORA MISMO en el flujo de trabajo
+    # (el tablero, con el filtro de tipo de arriba ya aplicado) en Excel o
+    # en Word — un ticket por fila, con su tiempo en su columna actual.
+    filtro_texto_export = f"Tipo: {filtro_categoria}" if filtro_categoria != "Todos" else "Todos los tipos"
+    fecha_archivo = datetime.now().strftime("%Y%m%d")
+    col_dl_excel, col_dl_word = st.columns(2)
+    filas_export = _filas_exportables_tablero(tickets)
+    with col_dl_excel:
+        try:
+            from utils import tablero_excel_bytes
+            st.download_button(
+                "📊 Descargar Excel (tablero)",
+                data=tablero_excel_bytes(filas_export, filtro_texto_export),
+                file_name=f"Tablero_{EMPRESA_NOMBRE.replace(' ', '_')}_{fecha_archivo}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"No se pudo generar el Excel: {e}")
+    with col_dl_word:
+        try:
+            from utils import tablero_word_bytes
+            st.download_button(
+                "📝 Descargar Word (tablero)",
+                data=tablero_word_bytes(filas_export, filtro_texto_export),
+                file_name=f"Tablero_{EMPRESA_NOMBRE.replace(' ', '_')}_{fecha_archivo}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"No se pudo generar el Word: {e}")
+
+    st.divider()
+
     columnas = st.columns(len(ESTADOS_TICKET))
     for col, estado in zip(columnas, ESTADOS_TICKET):
         tickets_col = [t for t in tickets if t["estado"] == estado]
@@ -95,16 +178,7 @@ def _dibujar_tablero():
                     # arriba (ver database.calcular_kpis_tablero), pero
                     # aquí por ticket individual, para que se vea de un
                     # vistazo cuáles llevan más tiempo esperando.
-                    entrada_estado = db.fecha_entro_a_estado_actual(t)
-                    horas_en_estado = None
-                    if entrada_estado:
-                        try:
-                            horas_en_estado = max(
-                                (datetime.now() - datetime.fromisoformat(entrada_estado)).total_seconds() / 3600, 0.0,
-                            )
-                        except ValueError:
-                            pass
-                    st.caption(f"⏱️ Lleva {formatear_horas(horas_en_estado)} en '{estado}'")
+                    st.caption(f"⏱️ Lleva {formatear_horas(_horas_en_estado_actual(t))} en '{estado}'")
 
                     # "contacto" es el campo viejo (antes de separar correo y
                     # teléfono) — se usa como respaldo solo para tickets
