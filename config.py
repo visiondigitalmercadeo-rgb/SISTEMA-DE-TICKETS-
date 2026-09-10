@@ -98,10 +98,13 @@ ESTADO_EMOJI = {
 
 # Foto/captura adjunta al reportar el problema — se guarda en base64 dentro
 # del propio documento de Firestore (como el resto de adjuntos chicos de la
-# plataforma comercial), con un límite bajo a propósito: Firestore tiene un
-# límite duro de 1 MiB por documento, y el ticket ya lleva descripción +
-# historial de seguimiento en el mismo documento.
-TICKET_FOTO_MAX_BYTES = 350_000  # ~350 KB
+# plataforma comercial). Firestore tiene un límite DURO de 1 MiB (1,048,576
+# bytes) por documento, y codificar en base64 agrega ~33% de peso extra —
+# 600 KB de foto quedan en ~800 KB codificados, dejando ~240 KB de margen
+# para la descripción y el historial de seguimiento del ticket (comentarios,
+# cambios de estado), que viven en ese mismo documento y van creciendo con
+# el tiempo. No subir este número mucho más sin repensar ese margen.
+TICKET_FOTO_MAX_BYTES = 600_000  # ~600 KB (antes 350 KB)
 
 # Nombres de mes en español, para los selectores "Mes" de los filtros por
 # mes/año (Historial, Dashboard) — ver pages/1_Sistema_IT.py y
