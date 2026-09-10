@@ -650,3 +650,187 @@ def tablero_word_bytes(filas: list, filtro_texto: str) -> bytes:
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Descargar lo del Historial (Excel de todos los cerrados, y PDF de resumen
+# ejecutivo) — ver pages/1_Sistema_IT.py, pestaña "🗂️ Historial", botones
+# "📊 Descargar Excel (cerrados)" / "📄 Descargar PDF (resumen ejecutivo)".
+# ---------------------------------------------------------------------------
+
+_COLUMNAS_HISTORIAL = [
+    ("numero", "Ticket"),
+    ("categoria", "Categoría"),
+    ("urgencia", "Urgencia"),
+    ("empresa", "Empresa"),
+    ("area", "Área"),
+    ("solicitante", "Solicitante"),
+    ("correo", "Correo"),
+    ("telefono", "Teléfono"),
+    ("asignado_a", "Asignado a"),
+    ("creado_en", "Creado"),
+    ("cerrado_en", "Cerrado"),
+    ("tiempo_resolucion", "Tiempo de resolución"),
+    ("descripcion", "Descripción"),
+]
+
+
+def historial_excel_bytes(filas: list, filtro_texto: str) -> bytes:
+    """Genera el Excel (.xlsx) con TODOS los tickets ya cerrados/archivados
+    (Historial — ver database.ticket_es_historico), uno por fila, con el
+    mismo filtro de tipo que tengas puesto en pantalla (no se limita a un
+    mes en particular: son TODOS los que hay). 'filas' ya viene armada por
+    la página (ver pages/1_Sistema_IT.py:_filas_exportables_historial), con
+    las llaves: numero, categoria, urgencia, empresa, area, solicitante,
+    correo, telefono, asignado_a, creado_en, cerrado_en, tiempo_resolucion
+    (ya formateado, ej. "3 h") y descripcion. Requiere 'openpyxl'."""
+    from datetime import datetime as _dt
+    import io
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Historial"
+
+    AZUL_OSCURO = "14243C"
+    GRIS_CLARO = "F2F2F2"
+    n_cols = len(_COLUMNAS_HISTORIAL)
+    BORDE = Border(*(Side(style="thin", color="D0D0D0"),) * 4)
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols)
+    celda = ws.cell(row=1, column=1, value=f"Historial de tickets cerrados — Sistema de Soporte TI — {EMPRESA_NOMBRE}")
+    celda.font = Font(bold=True, size=14, color="FFFFFF")
+    for c in range(1, n_cols + 1):
+        ws.cell(row=1, column=c).fill = PatternFill("solid", fgColor=AZUL_OSCURO)
+    ws.row_dimensions[1].height = 22
+
+    ws.cell(row=2, column=1, value=f"Filtro: {filtro_texto}").font = Font(italic=True)
+    ws.cell(row=3, column=1, value=f"Generado: {_dt.now().strftime('%d/%m/%Y %H:%M')}").font = Font(
+        italic=True, size=9, color="808080"
+    )
+
+    fila_encabezado = 5
+    for i, (_clave, titulo) in enumerate(_COLUMNAS_HISTORIAL, start=1):
+        celda = ws.cell(row=fila_encabezado, column=i, value=titulo)
+        celda.font = Font(bold=True)
+        celda.fill = PatternFill("solid", fgColor=GRIS_CLARO)
+        celda.border = BORDE
+        celda.alignment = Alignment(horizontal="center")
+
+    for f, datos in enumerate(filas, start=fila_encabezado + 1):
+        for i, (clave, _titulo) in enumerate(_COLUMNAS_HISTORIAL, start=1):
+            celda = ws.cell(row=f, column=i, value=datos.get(clave, "—"))
+            celda.border = BORDE
+            celda.alignment = Alignment(horizontal="left" if i == n_cols else "center", wrap_text=(i == n_cols))
+
+    anchos = [10, 16, 12, 16, 16, 20, 26, 14, 18, 12, 12, 16, 44]
+    for i, ancho in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+    ws.freeze_panes = f"A{fila_encabezado + 1}"
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+def historial_resumen_pdf_bytes(periodo_texto: str, filtro_texto: str, kpis: dict) -> bytes:
+    """Genera el PDF de resumen ejecutivo de lo CERRADO en Historial, para
+    el mes/año y el filtro de tipo elegidos en pantalla. 'kpis' es el dict
+    que devuelve database.calcular_kpis_dashboard para ese mes/año/tipo —
+    aquí solo se usan sus campos de 'cerrados' (este resumen es sobre
+    tickets ya cerrados ese periodo, no sobre los creados)."""
+    from datetime import datetime as _dt
+
+    AZUL_OSCURO = (20, 36, 60)
+    GRIS_CLARO = (242, 242, 242)
+    GRIS_TEXTO = (90, 90, 90)
+
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    pdf.set_xy(10, 10)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_text_color(*AZUL_OSCURO)
+    pdf.cell(0, 7, _pdf_safe("Resumen Ejecutivo — Historial de Tickets Cerrados"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(*GRIS_TEXTO)
+    pdf.cell(0, 6, _pdf_safe(f"{EMPRESA_NOMBRE} · Periodo: {periodo_texto}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(0, 5, _pdf_safe(f"Filtro: {filtro_texto}"), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_y(32)
+    pdf.set_draw_color(*AZUL_OSCURO)
+    pdf.set_line_width(0.6)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    def franja_titulo(texto):
+        pdf.set_fill_color(*AZUL_OSCURO)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, _pdf_safe(f"  {texto}"), fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(1)
+
+    def tabla(encabezados, filas, anchos):
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.set_fill_color(*GRIS_CLARO)
+        for texto, ancho in zip(encabezados, anchos):
+            pdf.cell(ancho, 7, _pdf_safe(texto), border=1, align="C", fill=True)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 9.5)
+        for fila_datos in filas:
+            for valor, ancho in zip(fila_datos, anchos):
+                pdf.cell(ancho, 7, _pdf_safe(valor), border=1, align="C")
+            pdf.ln()
+        pdf.ln(4)
+
+    franja_titulo("Resumen general")
+    tabla(
+        ["Tickets cerrados", "Tiempo promedio de resolución"],
+        [[kpis["cerrados"], formatear_horas(kpis["horas_promedio_resolucion"])]],
+        [95, 95],
+    )
+    tabla(
+        ["Resolución más rápida", "Resolución más lenta"],
+        [[formatear_horas(kpis["horas_resolucion_minima"]), formatear_horas(kpis["horas_resolucion_maxima"])]],
+        [95, 95],
+    )
+
+    franja_titulo("Por tipo de solicitud (rubro)")
+    tabla(
+        ["Rubro", "Cerrados", "Tiempo promedio"],
+        [
+            [cat, kpis["por_categoria_cerrados"].get(cat, 0), formatear_horas(kpis["horas_promedio_por_categoria"].get(cat))]
+            for cat in CATEGORIAS_TICKET
+        ],
+        [80, 55, 55],
+    )
+
+    franja_titulo("Por empresa")
+    tabla(
+        ["Empresa", "Cerrados"],
+        [[emp, kpis["por_empresa_cerrados"].get(emp, 0)] for emp in EMPRESAS_TICKET],
+        [95, 95],
+    )
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(140, 140, 140)
+    pdf.multi_cell(
+        0, 5,
+        _pdf_safe(
+            f"Informe generado automáticamente por Sistema IT — {EMPRESA_NOMBRE} — "
+            f"{_dt.now().strftime('%d/%m/%Y %H:%M')}."
+        ),
+    )
+
+    return bytes(pdf.output())
