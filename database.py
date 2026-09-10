@@ -242,7 +242,7 @@ def get_ticket_por_numero(numero: int):
     return None
 
 
-def create_ticket(nombre_solicitante, contacto, area, categoria, descripcion, foto_b64=None, foto_nombre=None, foto_tipo=None):
+def create_ticket(nombre_solicitante, contacto, area, categoria, descripcion, empresa=None, foto_b64=None, foto_nombre=None, foto_tipo=None):
     numero = _siguiente_numero_ticket()
     ahora = datetime.now().isoformat(timespec="seconds")
     doc_ref = get_client().collection("it_tickets").document()
@@ -250,6 +250,7 @@ def create_ticket(nombre_solicitante, contacto, area, categoria, descripcion, fo
         "numero": numero,
         "nombre_solicitante": (nombre_solicitante or "").strip(),
         "contacto": (contacto or "").strip() or None,
+        "empresa": (empresa or "").strip() or None,
         "area": (area or "").strip() or None,
         "categoria": categoria,
         "descripcion": (descripcion or "").strip(),
