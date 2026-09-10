@@ -21,10 +21,19 @@ with st.sidebar:
 st.title("🛠️ Panel de Soporte TI")
 
 
+def _categorias_validas(tecnico):
+    """Las 'categorías que atiende' guardadas del técnico, descartando
+    cualquiera que ya no exista en config.CATEGORIAS_TICKET (por ejemplo si
+    se renombró o se quitó una categoría después de asignársela a alguien).
+    Lista vacía = puede atender todas las categorías actuales."""
+    accesos = tecnico.get("categorias_acceso") or []
+    return [a for a in accesos if a in CATEGORIAS_TICKET]
+
+
 def _puede_atender(tecnico, categoria):
     """True si el técnico puede atender esa categoría de ticket — según sus
     'categorías que atiende'; una lista vacía significa 'todas'."""
-    accesos = tecnico.get("categorias_acceso") or []
+    accesos = _categorias_validas(tecnico)
     return not accesos or categoria in accesos
 
 
@@ -99,7 +108,7 @@ def _dibujar_tablero():
 
 def _fila_usuario(t, es_yo):
     tid = t["id"]
-    accesos = t.get("categorias_acceso") or []
+    accesos = _categorias_validas(t)
     with st.container(border=True):
         c1, c2 = st.columns([3, 2])
         with c1:
