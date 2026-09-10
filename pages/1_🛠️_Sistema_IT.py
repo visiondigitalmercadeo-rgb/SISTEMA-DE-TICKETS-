@@ -8,7 +8,7 @@ from config import (
     CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESTADO_EMOJI, ESTADOS_TICKET, FAVICON_PATH, MESES_ES,
     TICKET_SIGUIENTE_ESTADO,
 )
-from utils import formatear_horas, orden_solicitud_pdf_bytes, urgencia_badge_html
+from utils import formatear_horas, orden_trabajo_pdf_bytes, urgencia_badge_html
 
 st.set_page_config(page_title=f"Sistema IT — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
 auth.mostrar_logo_sidebar()
@@ -192,7 +192,13 @@ def _dibujar_tablero():
                     if t.get("asignado_a_nombre"):
                         st.caption(f"🔧 Asignado a: {t['asignado_a_nombre']}")
 
-                    if t.get("foto_b64"):
+                    # Si es una imagen (png/jpg/jpeg), ya va incrustada
+                    # dentro de la Orden de Trabajo (ver utils.
+                    # orden_trabajo_pdf_bytes) -- el botón aparte solo
+                    # sigue haciendo falta para el otro tipo permitido al
+                    # reportar el problema, un PDF, que no se puede
+                    # incrustar como imagen.
+                    if t.get("foto_b64") and not (t.get("foto_tipo") or "").lower().startswith("image/"):
                         import base64
                         st.download_button(
                             f"📎 {t.get('foto_nombre') or 'archivo adjunto'}",
@@ -203,8 +209,8 @@ def _dibujar_tablero():
 
                     try:
                         st.download_button(
-                            "📄 Orden de Solicitud (PDF)",
-                            data=orden_solicitud_pdf_bytes(t), file_name=f"TI-{t['numero']:04d}.pdf",
+                            "📄 Orden de Trabajo (PDF)",
+                            data=orden_trabajo_pdf_bytes(t), file_name=f"TI-{t['numero']:04d}.pdf",
                             mime="application/pdf", use_container_width=True, key=f"panel_orden_pdf_{tid}",
                         )
                     except Exception:
@@ -335,8 +341,8 @@ def _dibujar_historial():
 
             try:
                 st.download_button(
-                    "📄 Orden de Solicitud (PDF)",
-                    data=orden_solicitud_pdf_bytes(t), file_name=f"TI-{t['numero']:04d}.pdf",
+                    "📄 Orden de Trabajo (PDF)",
+                    data=orden_trabajo_pdf_bytes(t), file_name=f"TI-{t['numero']:04d}.pdf",
                     mime="application/pdf", use_container_width=True, key=f"hist_orden_pdf_{tid}",
                 )
             except Exception:
