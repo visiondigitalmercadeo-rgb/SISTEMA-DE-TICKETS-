@@ -86,6 +86,44 @@ def _filas_exportables_tablero(tickets):
     return filas
 
 
+def _filas_exportables_historial(tickets):
+    """Arma la lista de filas (una por ticket) para el botón 'Descargar
+    Excel (cerrados)' del Historial (ver utils.historial_excel_bytes) — un
+    ticket por fila, ya cerrado/archivado, con su fecha de cierre y el
+    tiempo total que tardó en resolverse (desde que se creó hasta que
+    entró a su estado actual/final)."""
+    filas = []
+    for t in tickets:
+        numero = t.get("numero")
+        fecha_cierre = db.fecha_entro_a_estado_actual(t)
+        tiempo_resolucion = None
+        creado_en = t.get("creado_en")
+        if fecha_cierre and creado_en:
+            try:
+                tiempo_resolucion = max(
+                    (datetime.fromisoformat(fecha_cierre) - datetime.fromisoformat(creado_en)).total_seconds() / 3600,
+                    0.0,
+                )
+            except ValueError:
+                tiempo_resolucion = None
+        filas.append({
+            "numero": f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____",
+            "categoria": t.get("categoria") or "—",
+            "urgencia": t.get("urgencia") or "Normal",
+            "empresa": t.get("empresa") or "—",
+            "area": t.get("area") or "—",
+            "solicitante": t.get("nombre_solicitante") or "—",
+            "correo": t.get("correo") or t.get("contacto") or "—",
+            "telefono": t.get("telefono") or "—",
+            "asignado_a": t.get("asignado_a_nombre") or "Sin asignar",
+            "creado_en": _fecha_corta_export(creado_en),
+            "cerrado_en": _fecha_corta_export(fecha_cierre),
+            "tiempo_resolucion": formatear_horas(tiempo_resolucion),
+            "descripcion": t.get("descripcion") or "—",
+        })
+    return filas
+
+
 def _dibujar_kpis():
     todos = db.list_tickets()
     # Los que ya se archivaron a Historial no deben contar en "tiempo que
@@ -315,6 +353,44 @@ def _dibujar_historial():
     )
     lista = [t for t in historicos if filtro_categoria == "Todos" or t["categoria"] == filtro_categoria]
     lista.sort(key=lambda t: t.get("numero") or 0, reverse=True)
+
+    # --- Descargar TODO lo del Historial: un Excel con todos los cerrados
+    # (respeta el filtro de tipo de arriba, pero NO el mes/año — son
+    # "todos los cerrados", como pidió Steven) y un PDF con el resumen
+    # ejecutivo del mes/año elegidos arriba (reutiliza la misma agregación
+    # que ya usa el Dashboard, ver database.calcular_kpis_dashboard).
+    filtro_texto_export = f"Tipo: {filtro_categoria}" if filtro_categoria != "Todos" else "Todos los tipos"
+    fecha_archivo = datetime.now().strftime("%Y%m%d")
+    col_dl_excel, col_dl_pdf = st.columns(2)
+    with col_dl_excel:
+        try:
+            from utils import historial_excel_bytes
+            st.download_button(
+                "📊 Descargar Excel (cerrados)",
+                data=historial_excel_bytes(_filas_exportables_historial(lista), filtro_texto_export),
+                file_name=f"Historial_{EMPRESA_NOMBRE.replace(' ', '_')}_{fecha_archivo}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"No se pudo generar el Excel: {e}")
+    with col_dl_pdf:
+        try:
+            from utils import historial_resumen_pdf_bytes
+            kpis_resumen = db.calcular_kpis_dashboard(
+                todos, anio_sel, mes_num, categoria=None if filtro_categoria == "Todos" else filtro_categoria,
+            )
+            st.download_button(
+                "📄 Descargar PDF (resumen ejecutivo)",
+                data=historial_resumen_pdf_bytes(f"{mes_sel} {anio_sel}", filtro_texto_export, kpis_resumen),
+                file_name=f"Resumen_Historial_{EMPRESA_NOMBRE.replace(' ', '_')}_{fecha_archivo}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"No se pudo generar el PDF: {e}")
+
+    st.divider()
 
     if not lista:
         st.info("No hay tickets en el historial todavía.")
