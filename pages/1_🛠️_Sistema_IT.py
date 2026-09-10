@@ -58,10 +58,9 @@ def _fecha_corta_export(iso_txt):
 
 
 def _filas_exportables_tablero(tickets):
-    """Arma la lista de filas (una por ticket) para los botones 'Descargar
-    Excel'/'Descargar Word' del tablero (ver utils.tablero_excel_bytes /
-    tablero_word_bytes) — con todo ya formateado a texto, listo para
-    escribir directo en la hoja/tabla."""
+    """Arma la lista de filas (una por ticket) para el botón 'Descargar
+    Excel (tablero)' (ver utils.tablero_excel_bytes) — con todo ya
+    formateado a texto, listo para escribir directo en la hoja."""
     filas = []
     for t in tickets:
         numero = t.get("numero")
@@ -154,25 +153,33 @@ def _dibujar_kpis():
     for t in en_curso:
         nombre = t.get("asignado_a_nombre") or "Sin asignar"
         conteo_por_tecnico[nombre] = conteo_por_tecnico.get(nombre, 0) + 1
+    # Llaves en minúscula -- son las mismas que espera utils.
+    # tablero_resumen_pdf_bytes para el PDF de resumen ejecutivo (ver
+    # _dibujar_tablero, más abajo); para la tabla en pantalla se muestran
+    # con encabezados más bonitos.
     filas_tecnicos = [
-        {"Técnico": t["nombre"], "Tickets asignados": conteo_por_tecnico.get(t["nombre"], 0)}
+        {"tecnico": t["nombre"], "tickets_asignados": conteo_por_tecnico.get(t["nombre"], 0)}
         for t in tecnicos
     ]
     sin_asignar = conteo_por_tecnico.get("Sin asignar", 0)
     if sin_asignar:
-        filas_tecnicos.append({"Técnico": "Sin asignar", "Tickets asignados": sin_asignar})
+        filas_tecnicos.append({"tecnico": "Sin asignar", "tickets_asignados": sin_asignar})
     if filas_tecnicos:
-        st.dataframe(filas_tecnicos, use_container_width=True, hide_index=True)
+        st.dataframe(
+            [{"Técnico": f["tecnico"], "Tickets asignados": f["tickets_asignados"]} for f in filas_tecnicos],
+            use_container_width=True, hide_index=True,
+        )
     else:
         st.caption("Todavía no hay técnicos registrados.")
 
     st.divider()
+    return kpis, filas_tecnicos
 
 
 def _dibujar_tablero():
     st.caption("Tablero de tickets — arrástralos mentalmente de izquierda a derecha conforme avanzan.")
 
-    _dibujar_kpis()
+    kpis_tablero, filas_tecnicos = _dibujar_kpis()
 
     filtro_categoria = st.selectbox("Filtrar por tipo", ["Todos"] + CATEGORIAS_TICKET, key="panel_filtro_categoria")
     tickets = db.list_tickets(categoria=None if filtro_categoria == "Todos" else filtro_categoria)
@@ -182,12 +189,13 @@ def _dibujar_tablero():
     tickets = [t for t in tickets if not db.ticket_es_historico(t)]
     tecnicos_activos = db.list_it_usuarios(solo_activos=True)
 
-    # --- Descargar los datos que están AHORA MISMO en el flujo de trabajo
-    # (el tablero, con el filtro de tipo de arriba ya aplicado) en Excel o
-    # en Word — un ticket por fila, con su tiempo en su columna actual.
+    # --- Descargar lo que está AHORA MISMO en el flujo de trabajo (el
+    # tablero, con el filtro de tipo de arriba ya aplicado): un Excel con
+    # un ticket por fila (con su tiempo en su columna actual), y un PDF con
+    # el resumen ejecutivo del tablero (mismo estilo que el de Historial).
     filtro_texto_export = f"Tipo: {filtro_categoria}" if filtro_categoria != "Todos" else "Todos los tipos"
     fecha_archivo = datetime.now().strftime("%Y%m%d")
-    col_dl_excel, col_dl_word = st.columns(2)
+    col_dl_excel, col_dl_pdf = st.columns(2)
     filas_export = _filas_exportables_tablero(tickets)
     with col_dl_excel:
         try:
@@ -201,18 +209,18 @@ def _dibujar_tablero():
             )
         except Exception as e:
             st.error(f"No se pudo generar el Excel: {e}")
-    with col_dl_word:
+    with col_dl_pdf:
         try:
-            from utils import tablero_word_bytes
+            from utils import tablero_resumen_pdf_bytes
             st.download_button(
-                "📝 Descargar Word (tablero)",
-                data=tablero_word_bytes(filas_export, filtro_texto_export),
-                file_name=f"Tablero_{EMPRESA_NOMBRE.replace(' ', '_')}_{fecha_archivo}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "📄 Descargar PDF (resumen ejecutivo)",
+                data=tablero_resumen_pdf_bytes(filtro_texto_export, kpis_tablero, filas_tecnicos),
+                file_name=f"Resumen_Tablero_{EMPRESA_NOMBRE.replace(' ', '_')}_{fecha_archivo}.pdf",
+                mime="application/pdf",
                 use_container_width=True,
             )
         except Exception as e:
-            st.error(f"No se pudo generar el Word: {e}")
+            st.error(f"No se pudo generar el PDF: {e}")
 
     st.divider()
 
