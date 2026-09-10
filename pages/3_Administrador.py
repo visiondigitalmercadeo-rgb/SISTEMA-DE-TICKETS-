@@ -121,15 +121,30 @@ for t in usuarios:
     _fila_usuario(t, es_yo=(t["id"] == user["id"]))
 
 st.divider()
-st.markdown("**➕ Agregar técnico**")
+st.markdown("**➕ Agregar técnico o administrador**")
+st.caption(
+    "Con este mismo formulario agregas tanto técnicos como nuevos administradores — marca la "
+    "casilla '🔑 Administrador del panel' de abajo si esta persona también debe poder entrar a "
+    "Administrador (agregar/editar gente, generar QR, etc.) y a Dashboard. Si ya existe la cuenta y "
+    "solo quieres subirla a administrador, hazlo desde su pestaña '⚙️ Permisos' más arriba, en vez "
+    "de crear una nueva."
+)
 with st.form("form_nuevo_tecnico", clear_on_submit=True):
-    nombre_nuevo = st.text_input("Nombre completo")
-    username_nuevo = st.text_input("Usuario")
-    password_nuevo = st.text_input("Contraseña inicial", type="password")
-    correo_nuevo = st.text_input("Correo (opcional, para mandarle la Orden de Solicitud al asignarle un ticket)")
-    accesos_nuevo = st.multiselect("Categorías que atiende (vacío = todas)", CATEGORIAS_TICKET)
-    es_admin_nuevo = st.checkbox("También administrador del panel (puede administrar usuarios)")
-    if st.form_submit_button("Crear técnico", use_container_width=True):
+    nombre_nuevo = st.text_input("Nombre completo", key="nuevo_nombre")
+    username_nuevo = st.text_input("Usuario", key="nuevo_usuario")
+    password_nuevo = st.text_input("Contraseña inicial", type="password", key="nuevo_password")
+    es_admin_nuevo = st.checkbox(
+        "🔑 Administrador del panel (además de atender tickets, puede administrar usuarios)",
+        key="nuevo_es_admin",
+    )
+    correo_nuevo = st.text_input(
+        "Correo (opcional, para mandarle la Orden de Solicitud al asignarle un ticket)", key="nuevo_correo",
+    )
+    accesos_nuevo = st.multiselect(
+        "Categorías que atiende (vacío = todas)", CATEGORIAS_TICKET, key="nuevo_accesos",
+        help="Un administrador ya ve todo el sistema de todas formas — esto importa sobre todo para técnicos normales.",
+    )
+    if st.form_submit_button("Crear cuenta", use_container_width=True):
         if not nombre_nuevo.strip() or not username_nuevo.strip() or not password_nuevo:
             st.error("Completa nombre, usuario y contraseña.")
         else:
@@ -138,7 +153,9 @@ with st.form("form_nuevo_tecnico", clear_on_submit=True):
                     nombre_nuevo, username_nuevo, password_nuevo,
                     es_admin=es_admin_nuevo, categorias_acceso=accesos_nuevo, correo=correo_nuevo,
                 )
-                st.success(f"'{nombre_nuevo}' agregado al equipo de TI.")
+                st.success(
+                    f"'{nombre_nuevo}' agregado " + ("como administrador." if es_admin_nuevo else "al equipo de TI.")
+                )
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
