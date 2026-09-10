@@ -25,7 +25,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 import fake_firestore
-from config import BASE_DIR, CATEGORIAS_TICKET, EMPRESA_NOMBRE
+from config import BASE_DIR, CATEGORIAS_TICKET, EMPRESA_NOMBRE, URGENCIA_DEFECTO, URGENCIA_EMOJI
 from utils import orden_solicitud_pdf_bytes
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -267,7 +267,10 @@ def get_ticket_por_numero(numero: int):
     return None
 
 
-def create_ticket(nombre_solicitante, correo, telefono, area, categoria, descripcion, empresa=None, foto_b64=None, foto_nombre=None, foto_tipo=None):
+def create_ticket(
+    nombre_solicitante, correo, telefono, area, categoria, descripcion,
+    empresa=None, urgencia=None, foto_b64=None, foto_nombre=None, foto_tipo=None,
+):
     numero = _siguiente_numero_ticket()
     ahora = datetime.now().isoformat(timespec="seconds")
     doc_ref = get_client().collection("it_tickets").document()
@@ -279,6 +282,7 @@ def create_ticket(nombre_solicitante, correo, telefono, area, categoria, descrip
         "empresa": (empresa or "").strip() or None,
         "area": (area or "").strip() or None,
         "categoria": categoria,
+        "urgencia": urgencia or URGENCIA_DEFECTO,
         "descripcion": (descripcion or "").strip(),
         "foto_b64": foto_b64, "foto_nombre": foto_nombre, "foto_tipo": foto_tipo,
         "estado": "Nuevo",
@@ -534,6 +538,8 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
         categoria = ticket.get("categoria")
         numero = ticket.get("numero")
         numero_txt = f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____"
+        urgencia = ticket.get("urgencia") or URGENCIA_DEFECTO
+        urgencia_emoji = URGENCIA_EMOJI.get(urgencia, "")
 
         # "contacto" es el campo viejo (antes de separar correo y teléfono) —
         # se sigue leyendo aquí solo para que los tickets creados antes de
@@ -547,6 +553,7 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
             cuerpo_soporte = (
                 f"Se registró un ticket nuevo de {categoria}.\n\n"
                 f"N° de ticket: {numero_txt}\n"
+                f"Urgencia: {urgencia_emoji} {urgencia}\n"
                 f"Empresa: {ticket.get('empresa') or '—'}\n"
                 f"Tienda / área: {ticket.get('area') or '—'}\n"
                 f"Solicitante: {ticket.get('nombre_solicitante') or '—'}"
@@ -554,8 +561,13 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
                 f"Problema:\n{ticket.get('descripcion') or '—'}\n\n"
                 f"Entra al Sistema IT para asignarlo y darle seguimiento."
             )
+            # Si es Crítico o Emergencia, se nota desde el asunto del correo
+            # (no solo abriéndolo), para que no se pierda entre el resto de
+            # avisos de la bandeja de entrada.
+            prefijo_urgente = f"{urgencia_emoji} [{urgencia.upper()}] " if urgencia in ("Crítico", "Emergencia") else ""
             enviar_orden_ticket(
-                ticket, destinatarios_soporte, asunto=f"🎫 Ticket nuevo {numero_txt} — {categoria}",
+                ticket, destinatarios_soporte,
+                asunto=f"{prefijo_urgente}🎫 Ticket nuevo {numero_txt} — {categoria}",
                 cuerpo_extra=cuerpo_soporte,
             )
 
