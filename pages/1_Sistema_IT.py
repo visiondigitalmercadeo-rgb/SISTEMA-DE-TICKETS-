@@ -6,6 +6,7 @@ from config import (
     CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESTADO_EMOJI, ESTADOS_TICKET, FAVICON_PATH, LOGO_SOPORTE_PATH,
     TICKET_SIGUIENTE_ESTADO,
 )
+from utils import orden_solicitud_pdf_bytes
 
 st.set_page_config(page_title=f"Sistema IT — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
 try:
@@ -110,6 +111,15 @@ def _dibujar_tablero():
                             mime=t.get("foto_tipo") or "application/octet-stream",
                             use_container_width=True, key=f"panel_foto_{tid}",
                         )
+
+                    try:
+                        st.download_button(
+                            "📄 Orden de Solicitud (PDF)",
+                            data=orden_solicitud_pdf_bytes(t), file_name=f"TI-{t['numero']:04d}.pdf",
+                            mime="application/pdf", use_container_width=True, key=f"panel_orden_pdf_{tid}",
+                        )
+                    except Exception:
+                        pass
 
                     # Asignar / reasignar técnico — solo se ofrecen los que
                     # pueden atender esta categoría (según sus "categorías
