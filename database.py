@@ -15,6 +15,8 @@ import os
 import re
 import smtplib
 from datetime import datetime
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
@@ -24,6 +26,7 @@ from firebase_admin import credentials, firestore
 
 import fake_firestore
 from config import BASE_DIR, EMPRESA_NOMBRE
+from utils import orden_solicitud_pdf_bytes
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -131,7 +134,7 @@ def get_it_usuario_by_username(username):
     return None
 
 
-def create_it_usuario(nombre, username, password, es_admin=False, categorias_acceso=None):
+def create_it_usuario(nombre, username, password, es_admin=False, categorias_acceso=None, correo=None):
     username = username.strip().lower()
     if get_it_usuario_by_username(username):
         raise ValueError(f"Ya existe un usuario de TI con el nombre de usuario '{username}'.")
@@ -140,6 +143,7 @@ def create_it_usuario(nombre, username, password, es_admin=False, categorias_acc
         "nombre": nombre.strip(), "username": username, "password_hash": hash_password(password),
         "es_admin": bool(es_admin), "activo": True,
         "categorias_acceso": list(categorias_acceso) if categorias_acceso else [],
+        "correo": (correo or "").strip() or None,
         "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
     return doc_ref.id
@@ -179,10 +183,13 @@ def _validar_no_es_ultimo_admin_activo(uid, motivo):
         )
 
 
-def update_it_usuario_perfil(uid, nombre, username, categorias_acceso=None):
-    """Edita nombre, usuario (login) y las categorías de tickets que puede
-    atender. No toca contraseña, rol ni estado activo/inactivo (ver las
-    funciones dedicadas para eso)."""
+def update_it_usuario_perfil(uid, nombre, username, categorias_acceso=None, correo=None):
+    """Edita nombre, usuario (login), correo y las categorías de tickets que
+    puede atender. El correo es el que recibe la Orden de Solicitud en PDF
+    cuando le asignan un ticket (ver enviar_orden_ticket) — puede dejarse
+    vacío, simplemente no le llega nada directo a esa persona. No toca
+    contraseña, rol ni estado activo/inactivo (ver las funciones dedicadas
+    para eso)."""
     nombre = (nombre or "").strip()
     username = (username or "").strip().lower()
     if not nombre or not username:
@@ -193,6 +200,7 @@ def update_it_usuario_perfil(uid, nombre, username, categorias_acceso=None):
     get_client().collection("it_usuarios").document(uid).update({
         "nombre": nombre, "username": username,
         "categorias_acceso": list(categorias_acceso) if categorias_acceso else [],
+        "correo": (correo or "").strip() or None,
     })
 
 
@@ -281,6 +289,19 @@ def asignar_ticket(ticket_id, tecnico_id, tecnico_nombre, autor_nombre=None):
     if tecnico_nombre and (ticket or {}).get("estado") == "Nuevo":
         cambios["estado"] = "Asignado"
     get_client().collection("it_tickets").document(ticket_id).update(cambios)
+
+    if tecnico_id and tecnico_nombre:
+        tecnico = get_it_usuario(tecnico_id)
+        correo_tecnico = (tecnico or {}).get("correo")
+        if correo_tecnico:
+            ticket_actualizado = dict(ticket or {})
+            ticket_actualizado.update(cambios)
+            numero = ticket_actualizado.get("numero")
+            numero_txt = f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____"
+            enviar_orden_ticket(
+                ticket_actualizado, [correo_tecnico],
+                asunto=f"🎫 Se te asignó el ticket {numero_txt} — {ticket_actualizado.get('categoria')}",
+            )
 
 
 def avanzar_ticket(ticket_id, nuevo_estado, autor_nombre=None):
@@ -371,6 +392,64 @@ def enviar_correo_aviso(destinatarios, asunto, cuerpo) -> bool:
         return False
 
 
+def enviar_correo_aviso_adjunto(destinatarios, asunto, cuerpo, adjunto_bytes=None, adjunto_nombre=None) -> bool:
+    """Igual que enviar_correo_aviso, pero además permite mandar un archivo
+    adjunto (la Orden de Solicitud en PDF — ver utils.orden_solicitud_pdf_bytes
+    / enviar_orden_ticket). Si 'adjunto_bytes' es None manda un correo de
+    texto plano normal, sin adjunto. Nunca lanza excepción — mismo
+    comportamiento a prueba de fallos que enviar_correo_aviso."""
+    destinatarios = [d.strip() for d in (destinatarios or []) if d and d.strip()]
+    conf = _smtp_config()
+    if not destinatarios or not conf:
+        return False
+    try:
+        if adjunto_bytes:
+            msg = MIMEMultipart()
+            msg.attach(MIMEText(cuerpo, "plain", "utf-8"))
+            adjunto = MIMEApplication(adjunto_bytes, _subtype="pdf")
+            adjunto.add_header(
+                "Content-Disposition", "attachment", filename=adjunto_nombre or "documento.pdf",
+            )
+            msg.attach(adjunto)
+        else:
+            msg = MIMEText(cuerpo, "plain", "utf-8")
+        msg["Subject"] = asunto
+        msg["From"] = formataddr((f"Soporte TI {EMPRESA_NOMBRE}", conf["usuario"]))
+        msg["To"] = ", ".join(destinatarios)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(conf["usuario"], conf["app_password"])
+            server.sendmail(conf["usuario"], destinatarios, msg.as_string())
+        return True
+    except Exception as e:
+        import traceback
+        print("ERROR AL MANDAR CORREO CON ADJUNTO:", e)
+        traceback.print_exc()
+        return False
+
+
+def enviar_orden_ticket(ticket: dict, destinatarios: list, asunto: str, cuerpo_extra: str = "") -> bool:
+    """Genera la Orden de Solicitud en PDF de 'ticket' (con el logo de la
+    empresa del solicitante) y la manda por correo a 'destinatarios'. Nunca
+    lanza excepción — si algo falla (armar el PDF, mandar el correo, etc.)
+    solo queda en el log del servidor."""
+    try:
+        numero = ticket.get("numero")
+        numero_txt = f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____"
+        pdf_bytes = orden_solicitud_pdf_bytes(ticket)
+        cuerpo = (
+            (cuerpo_extra + "\n\n" if cuerpo_extra else "")
+            + f"Se adjunta la Orden de Solicitud del ticket {numero_txt} en PDF."
+        )
+        return enviar_correo_aviso_adjunto(
+            destinatarios, asunto, cuerpo, adjunto_bytes=pdf_bytes, adjunto_nombre=f"{numero_txt}.pdf",
+        )
+    except Exception as e:
+        import traceback
+        print("ERROR AL PREPARAR LA ORDEN DE SOLICITUD:", e)
+        traceback.print_exc()
+        return False
+
+
 def _es_correo_valido(texto) -> bool:
     return bool(texto and _EMAIL_RE.match(texto.strip()))
 
@@ -393,8 +472,9 @@ def set_it_correos_aviso(categoria: str, correos: list):
 
 
 def enviar_avisos_ticket_nuevo(ticket: dict):
-    """Manda los avisos por correo de un ticket recién creado: a los correos
-    de soporte configurados para esa categoría, y —si el solicitante dejó un
+    """Manda los avisos por correo de un ticket recién creado (con la Orden
+    de Solicitud en PDF adjunta — ver enviar_orden_ticket): a los correos de
+    soporte configurados para esa categoría, y —si el solicitante dejó un
     correo válido en 'contacto' (no una extensión ni un teléfono)— también a
     él, para confirmarle que su ticket quedó registrado. Se llama
     automáticamente desde create_ticket; nunca lanza excepción, para que un
@@ -406,7 +486,6 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
 
         destinatarios_soporte = get_it_correos_aviso(categoria)
         if destinatarios_soporte:
-            asunto_soporte = f"🎫 Ticket nuevo {numero_txt} — {categoria}"
             cuerpo_soporte = (
                 f"Se registró un ticket nuevo de {categoria}.\n\n"
                 f"N° de ticket: {numero_txt}\n"
@@ -417,11 +496,13 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
                 f"Problema:\n{ticket.get('descripcion') or '—'}\n\n"
                 f"Entra al Sistema IT para asignarlo y darle seguimiento."
             )
-            enviar_correo_aviso(destinatarios_soporte, asunto_soporte, cuerpo_soporte)
+            enviar_orden_ticket(
+                ticket, destinatarios_soporte, asunto=f"🎫 Ticket nuevo {numero_txt} — {categoria}",
+                cuerpo_extra=cuerpo_soporte,
+            )
 
         contacto = (ticket.get("contacto") or "").strip()
         if _es_correo_valido(contacto):
-            asunto_solicitante = f"✅ Recibimos tu ticket {numero_txt}"
             cuerpo_solicitante = (
                 f"Hola {ticket.get('nombre_solicitante') or ''},\n\n"
                 f"Recibimos tu solicitud de {categoria} y quedó registrada como el ticket {numero_txt}.\n\n"
@@ -430,8 +511,92 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
                 f"momento desde la pestaña 'Consultar un ticket' de la página de Soporte TI, usando el "
                 f"número {numero_txt}."
             )
-            enviar_correo_aviso([contacto], asunto_solicitante, cuerpo_solicitante)
+            enviar_orden_ticket(
+                ticket, [contacto], asunto=f"✅ Recibimos tu ticket {numero_txt}", cuerpo_extra=cuerpo_solicitante,
+            )
     except Exception as e:
         import traceback
         print("ERROR AL PREPARAR LOS AVISOS DE TICKET NUEVO:", e)
         traceback.print_exc()
+
+
+# ---------------------------------------------------------------------------
+# KPIs del tablero (ver pages/1_Sistema_IT.py) — cuántos tickets van este
+# mes, cuántos de cada categoría, y cuánto tiempo llevan AHORA MISMO los
+# tickets sentados en cada columna del tablero.
+# ---------------------------------------------------------------------------
+_ESTADO_DESDE_HISTORIAL_RE = re.compile(r"Pasó a '(.+)'")
+
+
+def _entro_a_estado_actual(ticket: dict):
+    """Fecha (texto ISO) en que 'ticket' entró a su estado ACTUAL
+    (ticket['estado']) — reconstruida recorriendo el historial en orden,
+    replicando las mismas dos formas en que un ticket cambia de estado:
+    (a) avanzar_ticket, que deja una marca explícita "Pasó a 'X'", y
+    (b) asignar_ticket, que pasa de 'Nuevo' a 'Asignado' en automático al
+    asignarle un técnico por primera vez (sin marca de tipo 'estado'). Si el
+    ticket nunca cambió de estado, retorna su fecha de creación."""
+    estado_simulado = "Nuevo"
+    entrada = ticket.get("creado_en")
+    for h in (ticket.get("historial") or []):
+        tipo = h.get("tipo")
+        if tipo == "estado":
+            m = _ESTADO_DESDE_HISTORIAL_RE.match(h.get("detalle") or "")
+            if m:
+                estado_simulado = m.group(1)
+                entrada = h.get("fecha") or entrada
+        elif tipo == "asignado" and estado_simulado == "Nuevo" and (h.get("detalle") or "").startswith("Asignado a"):
+            estado_simulado = "Asignado"
+            entrada = h.get("fecha") or entrada
+    return entrada
+
+
+def calcular_kpis_tablero(tickets: list) -> dict:
+    """KPIs para el encabezado del tablero:
+    - tickets_mes: cuántos tickets se crearon en el mes calendario actual.
+    - por_categoria_mes: {categoria: cantidad} de esos tickets del mes.
+    - horas_promedio_por_estado: {estado: horas_promedio} — el tiempo
+      promedio que llevan AHORA MISMO los tickets que están actualmente
+      sentados en cada columna del tablero (no cuenta el tiempo que
+      pasaron en columnas anteriores, ni tickets que ya se movieron de
+      ahí). Un estado sin ningún ticket en este momento simplemente no
+      aparece en el diccionario."""
+    ahora = datetime.now()
+    inicio_mes = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    tickets_mes = []
+    for t in tickets:
+        creado_en = t.get("creado_en")
+        if not creado_en:
+            continue
+        try:
+            if datetime.fromisoformat(creado_en) >= inicio_mes:
+                tickets_mes.append(t)
+        except ValueError:
+            continue
+
+    por_categoria_mes = {}
+    for t in tickets_mes:
+        cat = t.get("categoria") or "—"
+        por_categoria_mes[cat] = por_categoria_mes.get(cat, 0) + 1
+
+    horas_por_estado = {}
+    for t in tickets:
+        entrada = _entro_a_estado_actual(t)
+        if not entrada:
+            continue
+        try:
+            horas = (ahora - datetime.fromisoformat(entrada)).total_seconds() / 3600
+        except ValueError:
+            continue
+        horas_por_estado.setdefault(t.get("estado"), []).append(max(horas, 0.0))
+
+    horas_promedio_por_estado = {
+        estado: (sum(valores) / len(valores)) for estado, valores in horas_por_estado.items()
+    }
+
+    return {
+        "tickets_mes": len(tickets_mes),
+        "por_categoria_mes": por_categoria_mes,
+        "horas_promedio_por_estado": horas_promedio_por_estado,
+    }
