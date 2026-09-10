@@ -19,6 +19,12 @@ EMPRESA_NOMBRE = "Visión Digital"
 LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
 FAVICON_PATH = os.path.join(BASE_DIR, "assets", "favicon.png")
 
+# Logo específico de "Soporte TI" (el mono/mascota con audífonos) — se
+# muestra arriba del listado de páginas en la barra lateral (st.logo, en
+# app.py y en pages/1_Sistema_IT.py), arriba del título de la página pública,
+# y en la pantalla de inicio de sesión del equipo de TI (ver auth.py).
+LOGO_SOPORTE_PATH = os.path.join(BASE_DIR, "assets", "logo_soporte.png")
+
 # URL pública de esta app — se actualiza aquí en cuanto Steven la despliegue
 # en Streamlit Cloud y tenga la URL definitiva (se usa solo para armar el
 # texto de "ver más" en algún aviso futuro; hoy no es indispensable).
@@ -61,7 +67,7 @@ AREAS_POR_EMPRESA = {
 }
 ESCRIBIR_AREA_NUEVA = "✍️ Otra (escribir)"
 
-# Flujo del ticket: 5 columnas del tablero interno (ver pages/1_Panel_TI.py).
+# Flujo del ticket: 5 columnas del tablero interno (ver pages/1_Sistema_IT.py).
 ESTADOS_TICKET = ["Nuevo", "Asignado", "En proceso", "Resuelto", "Cerrado"]
 TICKET_SIGUIENTE_ESTADO = {
     "Nuevo": "Asignado",
