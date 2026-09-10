@@ -751,7 +751,12 @@ def calcular_kpis_dashboard(tickets: list, anio: int, mes: int, categoria: str =
       que 'horas_promedio_resolucion' pero desglosado por rubro (Soporte
       Técnico / Soporte Oracle), sobre los tickets cerrados ese mes (con los
       filtros aplicados). Una categoría sin ningún cerrado ese mes
-      simplemente no aparece en el diccionario."""
+      simplemente no aparece en el diccionario.
+    - horas_resolucion_minima / horas_resolucion_maxima: el tiempo de
+      resolución (creación → cierre) más corto y más largo, en horas, entre
+      los tickets cerrados ese mes (con los filtros aplicados) — solo el
+      número, no de qué ticket se trata (para 'el más rápido' / 'el más
+      lento' de los KPIs). None si no hubo ninguno cerrado en ese periodo."""
     def coincide_filtros(t):
         if categoria and t.get("categoria") != categoria:
             return False
@@ -824,4 +829,6 @@ def calcular_kpis_dashboard(tickets: list, anio: int, mes: int, categoria: str =
         "horas_promedio_por_categoria": {
             cat: sum(horas) / len(horas) for cat, horas in horas_resolucion_por_categoria.items()
         },
+        "horas_resolucion_minima": min(horas_resolucion) if horas_resolucion else None,
+        "horas_resolucion_maxima": max(horas_resolucion) if horas_resolucion else None,
     }
