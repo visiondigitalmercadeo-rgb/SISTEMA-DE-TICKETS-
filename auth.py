@@ -4,12 +4,12 @@ controla quién puede entrar a la pestaña de Administrador (administrar
 usuarios: crear, editar, restablecer contraseña, subir/quitar admin,
 activar/desactivar y eliminar). "categorias_acceso" es aparte: qué tipos de
 ticket puede atender cada técnico (se usa solo para filtrar a quién se
-puede asignar un ticket, ver pages/1_Panel_TI.py)."""
+puede asignar un ticket, ver pages/1_Sistema_IT.py)."""
 
 import streamlit as st
 
 import database as db
-from config import EMPRESA_NOMBRE, LOGO_PATH
+from config import EMPRESA_NOMBRE, LOGO_SOPORTE_PATH
 
 
 def current_user():
@@ -49,14 +49,14 @@ def _logo_centrado(path, width):
 def require_login() -> bool:
     """Muestra el formulario de login (o, si todavía no existe ningún
     técnico, el formulario de 'primer arranque' para crear al primero) si no
-    hay sesión activa. Debe llamarse al inicio de pages/1_Panel_TI.py.
+    hay sesión activa. Debe llamarse al inicio de pages/1_Sistema_IT.py.
     Devuelve True si hay un usuario autenticado."""
     if current_user():
         return True
 
     _, col, _ = st.columns([1, 1.2, 1])
     with col:
-        _logo_centrado(LOGO_PATH, 260)
+        _logo_centrado(LOGO_SOPORTE_PATH, 260)
         st.markdown(
             f"<h3 style='text-align:center;margin-top:0.5rem;'>{EMPRESA_NOMBRE} · Soporte TI</h3>",
             unsafe_allow_html=True,
