@@ -484,9 +484,10 @@ def informe_kpis_pdf_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, k
 
 
 # ---------------------------------------------------------------------------
-# Descargar los datos del Tablero (Excel y Word) — ver
-# pages/1_Sistema_IT.py, botones "📊 Descargar Excel" / "📝 Descargar Word"
-# debajo del filtro "Filtrar por tipo". Ambas funciones reciben:
+# Descargar los datos del Tablero (Excel, un ticket por fila) y el resumen
+# ejecutivo del Tablero (PDF) — ver pages/1_Sistema_IT.py, botones "📊
+# Descargar Excel (tablero)" / "📄 Descargar PDF (resumen ejecutivo)" debajo
+# del filtro "Filtrar por tipo". tablero_excel_bytes recibe:
 #   - filas: una lista de dicts YA ARMADA por la página (ver
 #     pages/1_Sistema_IT.py:_filas_exportables_tablero), uno por ticket
 #     actualmente en el tablero (con el filtro de tipo que tenga puesto),
@@ -498,6 +499,9 @@ def informe_kpis_pdf_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, k
 #     cálculo de "cuánto lleva en su estado" y el resto de campos se hacen
 #     en la página, no aquí.
 #   - filtro_texto: p.ej. "Tipo: Soporte Técnico" o "Todos los tipos".
+# tablero_resumen_pdf_bytes (más abajo, después de tablero_excel_bytes) usa
+# en cambio los KPIs ya agregados (database.calcular_kpis_tablero) y la
+# tabla de "Tickets asignados por técnico" que arma la página.
 # ---------------------------------------------------------------------------
 
 _COLUMNAS_TABLERO = [
@@ -579,77 +583,101 @@ def tablero_excel_bytes(filas: list, filtro_texto: str) -> bytes:
     return buffer.getvalue()
 
 
-def tablero_word_bytes(filas: list, filtro_texto: str) -> bytes:
-    """Genera el Word (.docx) con los mismos tickets que tablero_excel_bytes
-    (ver arriba), en una tabla apaisada -- para compartir o imprimir el
-    estado del flujo de trabajo. Requiere 'python-docx'."""
+def tablero_resumen_pdf_bytes(filtro_texto: str, kpis: dict, filas_tecnicos: list) -> bytes:
+    """Genera el PDF de resumen ejecutivo del Tablero -- el estado del flujo
+    de trabajo AHORA MISMO (ver pages/1_Sistema_IT.py, pestaña "📋 Tablero",
+    botón "📄 Descargar PDF (resumen ejecutivo)"), con el mismo estilo que
+    historial_resumen_pdf_bytes (ver abajo). 'kpis' es el dict que devuelve
+    database.calcular_kpis_tablero (tickets_mes, por_categoria_mes,
+    horas_promedio_por_estado). 'filas_tecnicos' ya viene armada por la
+    página, una fila por cada técnico/administrador con las llaves
+    'tecnico' y 'tickets_asignados' (mismos datos que la tabla en pantalla
+    "👷 Tickets asignados por técnico")."""
     from datetime import datetime as _dt
-    import io
 
-    from docx import Document
-    from docx.enum.section import WD_ORIENT
-    from docx.enum.table import WD_TABLE_ALIGNMENT
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    from docx.shared import Inches, Pt, RGBColor
+    AZUL_OSCURO = (20, 36, 60)
+    GRIS_CLARO = (242, 242, 242)
+    GRIS_TEXTO = (90, 90, 90)
 
-    def _fondo_celda(celda, color_hex):
-        """Rellena el fondo de una celda de tabla — python-docx no trae un
-        atajo para esto, hay que armar el elemento XML 'w:shd' a mano."""
-        sombreado = OxmlElement("w:shd")
-        sombreado.set(qn("w:val"), "clear")
-        sombreado.set(qn("w:color"), "auto")
-        sombreado.set(qn("w:fill"), color_hex)
-        celda._tc.get_or_add_tcPr().append(sombreado)
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
 
-    doc = Document()
+    pdf.set_xy(10, 10)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_text_color(*AZUL_OSCURO)
+    pdf.cell(0, 7, _pdf_safe("Resumen Ejecutivo — Tablero de Tickets"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(*GRIS_TEXTO)
+    pdf.cell(0, 6, _pdf_safe(f"{EMPRESA_NOMBRE} · Estado actual del flujo de trabajo"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(0, 5, _pdf_safe(f"Filtro: {filtro_texto}"), new_x="LMARGIN", new_y="NEXT")
 
-    # Orientación horizontal -- si no, una tabla de 13 columnas no cabe.
-    seccion = doc.sections[0]
-    seccion.orientation = WD_ORIENT.LANDSCAPE
-    seccion.page_width, seccion.page_height = seccion.page_height, seccion.page_width
-    seccion.left_margin = seccion.right_margin = Inches(0.4)
-    seccion.top_margin = seccion.bottom_margin = Inches(0.5)
+    pdf.set_y(32)
+    pdf.set_draw_color(*AZUL_OSCURO)
+    pdf.set_line_width(0.6)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
 
-    titulo = doc.add_heading(f"Tablero de tickets — Sistema de Soporte TI — {EMPRESA_NOMBRE}", level=1)
-    for run in titulo.runs:
-        run.font.color.rgb = RGBColor(0x14, 0x24, 0x3C)
+    def franja_titulo(texto):
+        pdf.set_fill_color(*AZUL_OSCURO)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, _pdf_safe(f"  {texto}"), fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(1)
 
-    p_filtro = doc.add_paragraph()
-    p_filtro.add_run(f"Filtro: {filtro_texto}").italic = True
-    p_generado = doc.add_paragraph()
-    run_generado = p_generado.add_run(f"Generado: {_dt.now().strftime('%d/%m/%Y %H:%M')}")
-    run_generado.italic = True
-    run_generado.font.size = Pt(8)
-    run_generado.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+    def tabla(encabezados, filas, anchos):
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.set_fill_color(*GRIS_CLARO)
+        for texto, ancho in zip(encabezados, anchos):
+            pdf.cell(ancho, 7, _pdf_safe(texto), border=1, align="C", fill=True)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 9.5)
+        for fila_datos in filas:
+            for valor, ancho in zip(fila_datos, anchos):
+                pdf.cell(ancho, 7, _pdf_safe(valor), border=1, align="C")
+            pdf.ln()
+        pdf.ln(4)
 
-    if not filas:
-        doc.add_paragraph("No hay tickets en el tablero con ese filtro.")
+    franja_titulo("Resumen general")
+    tabla(["Tickets de este mes"], [[kpis["tickets_mes"]]], [190])
+    tabla(
+        [f"{ESTADO_EMOJI.get(estado, '')} {estado}".strip() for estado in ESTADOS_TICKET],
+        [[formatear_horas(kpis["horas_promedio_por_estado"].get(estado)) for estado in ESTADOS_TICKET]],
+        [190 / len(ESTADOS_TICKET)] * len(ESTADOS_TICKET),
+    )
+
+    franja_titulo("Por tipo de solicitud (rubro)")
+    tabla(
+        ["Rubro", "Tickets este mes"],
+        [[cat, kpis["por_categoria_mes"].get(cat, 0)] for cat in CATEGORIAS_TICKET],
+        [95, 95],
+    )
+
+    franja_titulo("Tickets asignados por técnico")
+    if filas_tecnicos:
+        tabla(
+            ["Técnico", "Tickets asignados"],
+            [[f["tecnico"], f["tickets_asignados"]] for f in filas_tecnicos],
+            [95, 95],
+        )
     else:
-        tabla = doc.add_table(rows=1, cols=len(_COLUMNAS_TABLERO))
-        tabla.alignment = WD_TABLE_ALIGNMENT.CENTER
-        tabla.style = "Table Grid"
+        pdf.set_font("Helvetica", "I", 9.5)
+        pdf.cell(0, 7, _pdf_safe("Todavía no hay técnicos registrados."), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(4)
 
-        celdas_encabezado = tabla.rows[0].cells
-        for i, (_clave, titulo_col) in enumerate(_COLUMNAS_TABLERO):
-            celdas_encabezado[i].text = titulo_col
-            for p in celdas_encabezado[i].paragraphs:
-                for run in p.runs:
-                    run.bold = True
-                    run.font.size = Pt(8)
-            _fondo_celda(celdas_encabezado[i], "D9D9D9")
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(140, 140, 140)
+    pdf.multi_cell(
+        0, 5,
+        _pdf_safe(
+            f"Informe generado automáticamente por Sistema IT — {EMPRESA_NOMBRE} — "
+            f"{_dt.now().strftime('%d/%m/%Y %H:%M')}."
+        ),
+    )
 
-        for datos in filas:
-            celdas = tabla.add_row().cells
-            for i, (clave, _titulo_col) in enumerate(_COLUMNAS_TABLERO):
-                celdas[i].text = str(datos.get(clave, "—"))
-                for p in celdas[i].paragraphs:
-                    for run in p.runs:
-                        run.font.size = Pt(8)
-
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    return buffer.getvalue()
+    return bytes(pdf.output())
 
 
 # ---------------------------------------------------------------------------
