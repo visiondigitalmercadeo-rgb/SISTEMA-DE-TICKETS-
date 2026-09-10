@@ -12,14 +12,20 @@ funciones de este archivo — nunca usa Firestore directamente.
 """
 
 import os
+import re
+import smtplib
 from datetime import datetime
+from email.mime.text import MIMEText
+from email.utils import formataddr
 
 import bcrypt
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 import fake_firestore
-from config import BASE_DIR
+from config import BASE_DIR, EMPRESA_NOMBRE
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 SERVICE_ACCOUNT_PATH = os.path.join(BASE_DIR, "serviceAccountKey.json")
 
@@ -100,7 +106,7 @@ def _doc_to_dict(snap):
 # Usuarios de soporte (equipo de TI) — colección "it_usuarios". Es un login
 # aparte del de plataforma_ventas: usuario/contraseña propios, sin roles
 # finos (todos pueden atender tickets); "es_admin" solo controla quién puede
-# agregar/desactivar compañeros del equipo (ver pages/1_Panel_TI.py).
+# agregar/desactivar compañeros del equipo (ver pages/1_Sistema_IT.py).
 # ---------------------------------------------------------------------------
 def list_it_usuarios(solo_activos=False):
     rows = [_doc_to_dict(s) for s in get_client().collection("it_usuarios").stream()]
@@ -246,7 +252,7 @@ def create_ticket(nombre_solicitante, contacto, area, categoria, descripcion, em
     numero = _siguiente_numero_ticket()
     ahora = datetime.now().isoformat(timespec="seconds")
     doc_ref = get_client().collection("it_tickets").document()
-    doc_ref.set({
+    datos_ticket = {
         "numero": numero,
         "nombre_solicitante": (nombre_solicitante or "").strip(),
         "contacto": (contacto or "").strip() or None,
@@ -259,7 +265,9 @@ def create_ticket(nombre_solicitante, contacto, area, categoria, descripcion, em
         "asignado_a_id": None, "asignado_a_nombre": None,
         "historial": [{"tipo": "creado", "detalle": "Ticket creado por el solicitante", "fecha": ahora}],
         "creado_en": ahora,
-    })
+    }
+    doc_ref.set(datos_ticket)
+    enviar_avisos_ticket_nuevo(datos_ticket)
     return numero
 
 
@@ -305,3 +313,125 @@ def agregar_comentario_ticket(ticket_id, autor_nombre, comentario):
         "tipo": "comentario", "detalle": comentario.strip(), "autor": autor_nombre, "fecha": ahora,
     })
     get_client().collection("it_tickets").document(ticket_id).update({"historial": historial})
+
+
+# ---------------------------------------------------------------------------
+# Avisos por correo (Gmail) — mismo patrón que ya usa la plataforma comercial
+# para las Minutas de Tienda: si todavía no están las credenciales
+# configuradas, estas funciones simplemente no hacen nada (no rompen el
+# resto de la página). Usa la MISMA tabla de secretos ("gmail_notificaciones")
+# que plataforma_ventas — si ya la configuraste allá, cópiala tal cual aquí.
+# ---------------------------------------------------------------------------
+def _smtp_config():
+    """Lee las credenciales de Gmail desde st.secrets['gmail_notificaciones']
+    (tabla con 'usuario' y 'app_password'). Retorna None si todavía no están
+    configuradas."""
+    try:
+        import streamlit as st
+        if "gmail_notificaciones" in st.secrets:
+            conf = st.secrets["gmail_notificaciones"]
+            if conf.get("usuario") and conf.get("app_password"):
+                return {"usuario": conf["usuario"], "app_password": conf["app_password"]}
+    except Exception as e:
+        import traceback
+        print("ERROR AL LEER LAS CREDENCIALES DE CORREO:", e)
+        traceback.print_exc()
+    return None
+
+
+def correo_disponible() -> bool:
+    """True si ya se configuraron las credenciales de Gmail para mandar
+    avisos por correo (ver _smtp_config)."""
+    return _smtp_config() is not None
+
+
+def enviar_correo_aviso(destinatarios, asunto, cuerpo) -> bool:
+    """Manda un correo de texto plano a una lista de direcciones, usando la
+    cuenta de Gmail configurada. Nunca lanza excepción — si algo falla (sin
+    credenciales, sin destinatarios, error de red, etc.) retorna False y el
+    detalle queda solo en el log del servidor, para que un problema de
+    correo nunca tumbe el resto de la página."""
+    destinatarios = [d.strip() for d in (destinatarios or []) if d and d.strip()]
+    conf = _smtp_config()
+    if not destinatarios or not conf:
+        return False
+    try:
+        msg = MIMEText(cuerpo, "plain", "utf-8")
+        msg["Subject"] = asunto
+        msg["From"] = formataddr((f"Soporte TI {EMPRESA_NOMBRE}", conf["usuario"]))
+        msg["To"] = ", ".join(destinatarios)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(conf["usuario"], conf["app_password"])
+            server.sendmail(conf["usuario"], destinatarios, msg.as_string())
+        return True
+    except Exception as e:
+        import traceback
+        print("ERROR AL MANDAR CORREO DE AVISO:", e)
+        traceback.print_exc()
+        return False
+
+
+def _es_correo_valido(texto) -> bool:
+    return bool(texto and _EMAIL_RE.match(texto.strip()))
+
+
+def get_it_correos_aviso(categoria: str) -> list:
+    """Lista de correos del personal de soporte que reciben aviso automático
+    cada vez que entra un ticket nuevo de esta categoría (configurable desde
+    Administrador → ✉️ Correos de aviso). Vacía si todavía no se ha guardado
+    ninguno para esa categoría."""
+    snap = get_client().collection("it_config").document(f"correos_aviso_{categoria}").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("correos") or []
+
+
+def set_it_correos_aviso(categoria: str, correos: list):
+    get_client().collection("it_config").document(f"correos_aviso_{categoria}").set({
+        "correos": [c.strip() for c in (correos or []) if c and c.strip()],
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def enviar_avisos_ticket_nuevo(ticket: dict):
+    """Manda los avisos por correo de un ticket recién creado: a los correos
+    de soporte configurados para esa categoría, y —si el solicitante dejó un
+    correo válido en 'contacto' (no una extensión ni un teléfono)— también a
+    él, para confirmarle que su ticket quedó registrado. Se llama
+    automáticamente desde create_ticket; nunca lanza excepción, para que un
+    problema de correo nunca impida guardar el ticket."""
+    try:
+        categoria = ticket.get("categoria")
+        numero = ticket.get("numero")
+        numero_txt = f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____"
+
+        destinatarios_soporte = get_it_correos_aviso(categoria)
+        if destinatarios_soporte:
+            asunto_soporte = f"🎫 Ticket nuevo {numero_txt} — {categoria}"
+            cuerpo_soporte = (
+                f"Se registró un ticket nuevo de {categoria}.\n\n"
+                f"N° de ticket: {numero_txt}\n"
+                f"Empresa: {ticket.get('empresa') or '—'}\n"
+                f"Tienda / área: {ticket.get('area') or '—'}\n"
+                f"Solicitante: {ticket.get('nombre_solicitante') or '—'}"
+                + (f" ({ticket.get('contacto')})" if ticket.get("contacto") else "") + "\n\n"
+                f"Problema:\n{ticket.get('descripcion') or '—'}\n\n"
+                f"Entra al Sistema IT para asignarlo y darle seguimiento."
+            )
+            enviar_correo_aviso(destinatarios_soporte, asunto_soporte, cuerpo_soporte)
+
+        contacto = (ticket.get("contacto") or "").strip()
+        if _es_correo_valido(contacto):
+            asunto_solicitante = f"✅ Recibimos tu ticket {numero_txt}"
+            cuerpo_solicitante = (
+                f"Hola {ticket.get('nombre_solicitante') or ''},\n\n"
+                f"Recibimos tu solicitud de {categoria} y quedó registrada como el ticket {numero_txt}.\n\n"
+                f"Problema reportado:\n{ticket.get('descripcion') or '—'}\n\n"
+                f"El equipo de TI le dará seguimiento pronto. Puedes consultar el estado en cualquier "
+                f"momento desde la pestaña 'Consultar un ticket' de la página de Soporte TI, usando el "
+                f"número {numero_txt}."
+            )
+            enviar_correo_aviso([contacto], asunto_solicitante, cuerpo_solicitante)
+    except Exception as e:
+        import traceback
+        print("ERROR AL PREPARAR LOS AVISOS DE TICKET NUEVO:", e)
+        traceback.print_exc()
