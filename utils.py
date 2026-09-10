@@ -334,8 +334,9 @@ def informe_kpis_excel_bytes(periodo_texto: str, filtros_texto: str, kpis: dict,
 
 def informe_kpis_pdf_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, kpis_tablero: dict) -> bytes:
     """Genera el reporte de KPIs como PDF con estilo de informe ejecutivo
-    gerencial (encabezado con logo, franjas de color por sección, tablas) —
-    listo para imprimir o adjuntar en un correo a Junta Directiva."""
+    gerencial (título, franjas de color por sección, tablas) — listo para
+    imprimir o adjuntar en un correo a Junta Directiva. Sin logo (a pedido
+    de Steven)."""
     from datetime import datetime as _dt
 
     AZUL_OSCURO = (20, 36, 60)
@@ -346,18 +347,9 @@ def informe_kpis_pdf_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, k
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # -- Encabezado -- (mismo logo "de imprenta" que usa la Orden de
-    # Solicitud -- ver orden_solicitud_pdf_bytes -- que es un archivo mucho
-    # más liviano que el logo_soporte.png de la barra lateral, ideal para
-    # adjuntar en correo a Junta Directiva sin que el PDF pese de más). El
-    # logo es apaisado (ancho ~2.1x su alto) -- a h=14 mide ~29mm de ancho,
-    # así que el texto del título arranca hasta x=48 para no encimarse con
-    # el logo (con h=18 sí se encimaban, ver captura de verificación).
-    try:
-        pdf.image(LOGO_ORDEN_VISION_DIGITAL_PATH, x=10, y=9, h=14)
-    except Exception:
-        pass
-    TEXTO_X = 48
+    # -- Encabezado -- (sin logo, a pedido de Steven -- el título arranca
+    # directo en el margen izquierdo).
+    TEXTO_X = 10
     pdf.set_xy(TEXTO_X, 10)
     pdf.set_font("Helvetica", "B", 15)
     pdf.set_text_color(*AZUL_OSCURO)
@@ -460,3 +452,172 @@ def informe_kpis_pdf_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, k
     )
 
     return bytes(pdf.output())
+
+
+# ---------------------------------------------------------------------------
+# Descargar los datos del Tablero (Excel y Word) — ver
+# pages/1_Sistema_IT.py, botones "📊 Descargar Excel" / "📝 Descargar Word"
+# debajo del filtro "Filtrar por tipo". Ambas funciones reciben:
+#   - filas: una lista de dicts YA ARMADA por la página (ver
+#     pages/1_Sistema_IT.py:_filas_exportables_tablero), uno por ticket
+#     actualmente en el tablero (con el filtro de tipo que tenga puesto),
+#     con las llaves: numero, categoria, urgencia, estado, tiempo_en_estado
+#     (ya formateado, ej. "3 h"), empresa, area, asignado_a, solicitante,
+#     correo, telefono, descripcion, creado_en (ya formateada, dd/mm/aaaa).
+#     Este archivo (utils.py) no importa database.py a propósito (sería un
+#     import circular -- database.py ya importa de aquí), así que el
+#     cálculo de "cuánto lleva en su estado" y el resto de campos se hacen
+#     en la página, no aquí.
+#   - filtro_texto: p.ej. "Tipo: Soporte Técnico" o "Todos los tipos".
+# ---------------------------------------------------------------------------
+
+_COLUMNAS_TABLERO = [
+    ("numero", "Ticket"),
+    ("categoria", "Categoría"),
+    ("urgencia", "Urgencia"),
+    ("estado", "Estado"),
+    ("tiempo_en_estado", "Tiempo en estado"),
+    ("empresa", "Empresa"),
+    ("area", "Área"),
+    ("asignado_a", "Asignado a"),
+    ("solicitante", "Solicitante"),
+    ("correo", "Correo"),
+    ("telefono", "Teléfono"),
+    ("descripcion", "Descripción"),
+    ("creado_en", "Creado"),
+]
+
+
+def tablero_excel_bytes(filas: list, filtro_texto: str) -> bytes:
+    """Genera el Excel (.xlsx) con los tickets que están AHORA MISMO en el
+    tablero (Nuevo/Asignado/En proceso/Resuelto — los que todavía no pasan a
+    Historial), uno por fila, con el mismo filtro de tipo que tengas puesto
+    en pantalla. Requiere 'openpyxl'."""
+    from datetime import datetime as _dt
+    import io
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tablero"
+
+    AZUL_OSCURO = "14243C"
+    GRIS_CLARO = "F2F2F2"
+    n_cols = len(_COLUMNAS_TABLERO)
+    BORDE = Border(*(Side(style="thin", color="D0D0D0"),) * 4)
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols)
+    celda = ws.cell(row=1, column=1, value=f"Tablero de tickets — Sistema de Soporte TI — {EMPRESA_NOMBRE}")
+    celda.font = Font(bold=True, size=14, color="FFFFFF")
+    for c in range(1, n_cols + 1):
+        ws.cell(row=1, column=c).fill = PatternFill("solid", fgColor=AZUL_OSCURO)
+    ws.row_dimensions[1].height = 22
+
+    ws.cell(row=2, column=1, value=f"Filtro: {filtro_texto}").font = Font(italic=True)
+    ws.cell(row=3, column=1, value=f"Generado: {_dt.now().strftime('%d/%m/%Y %H:%M')}").font = Font(
+        italic=True, size=9, color="808080"
+    )
+
+    fila_encabezado = 5
+    for i, (_clave, titulo) in enumerate(_COLUMNAS_TABLERO, start=1):
+        celda = ws.cell(row=fila_encabezado, column=i, value=titulo)
+        celda.font = Font(bold=True)
+        celda.fill = PatternFill("solid", fgColor=GRIS_CLARO)
+        celda.border = BORDE
+        celda.alignment = Alignment(horizontal="center")
+
+    for f, datos in enumerate(filas, start=fila_encabezado + 1):
+        for i, (clave, _titulo) in enumerate(_COLUMNAS_TABLERO, start=1):
+            celda = ws.cell(row=f, column=i, value=datos.get(clave, "—"))
+            celda.border = BORDE
+            celda.alignment = Alignment(horizontal="left" if i in (1, 12) else "center", wrap_text=(i == 12))
+
+    anchos = [10, 16, 12, 12, 16, 16, 16, 18, 20, 26, 14, 44, 12]
+    for i, ancho in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+    ws.freeze_panes = f"A{fila_encabezado + 1}"
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+def tablero_word_bytes(filas: list, filtro_texto: str) -> bytes:
+    """Genera el Word (.docx) con los mismos tickets que tablero_excel_bytes
+    (ver arriba), en una tabla apaisada -- para compartir o imprimir el
+    estado del flujo de trabajo. Requiere 'python-docx'."""
+    from datetime import datetime as _dt
+    import io
+
+    from docx import Document
+    from docx.enum.section import WD_ORIENT
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
+
+    def _fondo_celda(celda, color_hex):
+        """Rellena el fondo de una celda de tabla — python-docx no trae un
+        atajo para esto, hay que armar el elemento XML 'w:shd' a mano."""
+        sombreado = OxmlElement("w:shd")
+        sombreado.set(qn("w:val"), "clear")
+        sombreado.set(qn("w:color"), "auto")
+        sombreado.set(qn("w:fill"), color_hex)
+        celda._tc.get_or_add_tcPr().append(sombreado)
+
+    doc = Document()
+
+    # Orientación horizontal -- si no, una tabla de 13 columnas no cabe.
+    seccion = doc.sections[0]
+    seccion.orientation = WD_ORIENT.LANDSCAPE
+    seccion.page_width, seccion.page_height = seccion.page_height, seccion.page_width
+    seccion.left_margin = seccion.right_margin = Inches(0.4)
+    seccion.top_margin = seccion.bottom_margin = Inches(0.5)
+
+    titulo = doc.add_heading(f"Tablero de tickets — Sistema de Soporte TI — {EMPRESA_NOMBRE}", level=1)
+    for run in titulo.runs:
+        run.font.color.rgb = RGBColor(0x14, 0x24, 0x3C)
+
+    p_filtro = doc.add_paragraph()
+    p_filtro.add_run(f"Filtro: {filtro_texto}").italic = True
+    p_generado = doc.add_paragraph()
+    run_generado = p_generado.add_run(f"Generado: {_dt.now().strftime('%d/%m/%Y %H:%M')}")
+    run_generado.italic = True
+    run_generado.font.size = Pt(8)
+    run_generado.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+
+    if not filas:
+        doc.add_paragraph("No hay tickets en el tablero con ese filtro.")
+    else:
+        tabla = doc.add_table(rows=1, cols=len(_COLUMNAS_TABLERO))
+        tabla.alignment = WD_TABLE_ALIGNMENT.CENTER
+        tabla.style = "Table Grid"
+
+        celdas_encabezado = tabla.rows[0].cells
+        for i, (_clave, titulo_col) in enumerate(_COLUMNAS_TABLERO):
+            celdas_encabezado[i].text = titulo_col
+            for p in celdas_encabezado[i].paragraphs:
+                for run in p.runs:
+                    run.bold = True
+                    run.font.size = Pt(8)
+            _fondo_celda(celdas_encabezado[i], "D9D9D9")
+
+        for datos in filas:
+            celdas = tabla.add_row().cells
+            for i, (clave, _titulo_col) in enumerate(_COLUMNAS_TABLERO):
+                celdas[i].text = str(datos.get(clave, "—"))
+                for p in celdas[i].paragraphs:
+                    for run in p.runs:
+                        run.font.size = Pt(8)
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
