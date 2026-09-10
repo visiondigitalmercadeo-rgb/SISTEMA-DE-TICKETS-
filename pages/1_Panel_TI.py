@@ -2,13 +2,9 @@ import streamlit as st
 
 import auth
 import database as db
-from config import (
-    CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESTADO_EMOJI, ESTADOS_TICKET, FAVICON_PATH, LOGO_SOPORTE_PATH,
-    TICKET_SIGUIENTE_ESTADO,
-)
+from config import CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESTADO_EMOJI, ESTADOS_TICKET, FAVICON_PATH, TICKET_SIGUIENTE_ESTADO
 
-st.set_page_config(page_title=f"Sistema IT — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
-st.logo(LOGO_SOPORTE_PATH, size="large")
+st.set_page_config(page_title=f"Panel TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
 
 if not auth.require_login():
     st.stop()
@@ -24,7 +20,7 @@ with st.sidebar:
         auth.do_logout()
         st.rerun()
 
-st.title("🛠️ Sistema IT")
+st.title("🛠️ Panel de Soporte TI")
 
 
 def _categorias_validas(tecnico):
