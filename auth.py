@@ -9,7 +9,7 @@ puede asignar un ticket, ver pages/1_Sistema_IT.py)."""
 import streamlit as st
 
 import database as db
-from config import EMPRESA_NOMBRE, LOGO_SOPORTE_PATH
+from config import LOGO_SOPORTE_PATH
 
 
 def current_user():
@@ -65,7 +65,7 @@ def require_login() -> bool:
     with col:
         _logo_centrado(LOGO_SOPORTE_PATH, 260)
         st.markdown(
-            f"<h3 style='text-align:center;margin-top:0.5rem;'>{EMPRESA_NOMBRE} · Soporte TI</h3>",
+            "<h3 style='text-align:center;margin-top:0.5rem;'>Sistema tickets IT</h3>",
             unsafe_allow_html=True,
         )
 
