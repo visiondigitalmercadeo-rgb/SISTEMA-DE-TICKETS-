@@ -97,7 +97,13 @@ def _dibujar_tablero():
                 with st.container(border=True):
                     st.markdown(f"**#TI-{t['numero']:04d}**")
                     st.caption(f"{t['categoria']} · {t.get('empresa') or '—'} · {t.get('area') or '—'}")
-                    st.markdown(f"👤 {t['nombre_solicitante']}" + (f" · {t['contacto']}" if t.get("contacto") else ""))
+                    # "contacto" es el campo viejo (antes de separar correo y
+                    # teléfono) — se usa como respaldo solo para tickets
+                    # creados antes de ese cambio.
+                    datos_contacto = " · ".join(
+                        filter(None, [t.get("correo") or t.get("contacto"), t.get("telefono")])
+                    )
+                    st.markdown(f"👤 {t['nombre_solicitante']}" + (f" · {datos_contacto}" if datos_contacto else ""))
                     st.write(t["descripcion"][:160] + ("…" if len(t["descripcion"]) > 160 else ""))
 
                     if t.get("asignado_a_nombre"):
