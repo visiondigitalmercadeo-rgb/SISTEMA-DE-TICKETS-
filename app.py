@@ -1,133 +1,142 @@
-# Soporte TI — Visión Digital
+import streamlit as st
 
-Sistema de tickets de soporte técnico y de sistemas, separado de la plataforma comercial. Un empleado entra a un link público (sin usuario ni contraseña), reporta su problema, y el equipo de TI le da seguimiento desde un panel interno con su propio login.
+import auth
+import database as db
+from config import (
+    AREAS_POR_EMPRESA, CATEGORIA_DESCRIPCION, CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET,
+    ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI, FAVICON_PATH, LOGO_SOPORTE_PATH, TICKET_FOTO_MAX_BYTES,
+    URGENCIA_DEFECTO, URGENCIA_DESCRIPCION, URGENCIAS_TICKET,
+)
+from utils import archivo_a_b64, orden_solicitud_pdf_bytes, urgencia_badge_html
 
-## Qué trae
+st.set_page_config(page_title=f"Soporte TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="centered")
+auth.mostrar_logo_sidebar()
 
-- **`app.py`** — la página pública (el link que compartes con todos los empleados). Tiene dos pestañas: "Reportar un problema" (pide nombre, correo, teléfono y **urgencia**, ver más abajo — todos obligatorios; la foto/captura adjunta es opcional, hasta ~600 KB) y "Consultar un ticket" (con el número que les da al enviar el suyo — desde ahí también pueden descargar su Orden de Solicitud en PDF).
-- **`pages/1_🛠️_Sistema_IT.py`** — el panel interno del equipo de TI (en la barra lateral aparece como "🛠️ Sistema IT", con su propio ícono), con su propio login y estas pestañas:
-  - **📋 Tablero**: arriba de todo, antes del filtro, unos **KPIs** — cuántos tickets van en el mes (total y por categoría), y cuánto tiempo lleva ahora mismo cada ticket sentado en su columna actual (promedio por columna, para detectar dónde se están atascando; ya no cuenta ahí los tickets que se archivaron a Historial). Debajo, el tablero: Nuevo → Asignado → En proceso → Resuelto. Cada tarjeta muestra su **chip de urgencia** (ver más abajo) junto al número de ticket. Ya no existe un paso manual a "Cerrado" — en cuanto un ticket lleva un día calendario completo como "Resuelto" (es decir, el mismo día que se resuelve todavía se ve en el tablero; al cambiar de día), sale solo del tablero y pasa a la pestaña Historial, sin eliminarse. Cada tarjeta también tiene un botón para descargar la Orden de Solicitud en PDF, y (solo para administradores) uno para eliminar el ticket por completo, con casilla de confirmación. La primera vez que alguien entra ahí, como todavía no hay ningún técnico registrado, la misma pantalla deja crear la primera cuenta (que queda como administrador del panel).
-  - **🗂️ Historial**: la ven todos (técnicos y administradores). Lista de los tickets ya archivados (ver arriba, también con su chip de urgencia), filtrable por tipo (Soporte Técnico / Soporte Oracle), con un KPI arriba de "cuántos se cerraron por empresa" para el mes y año que elijas con los selectores de Mes/Año.
-- **`pages/2_📊_Dashboard.py`** — página nueva (aparece como "📊 Dashboard" en la barra lateral, con su propio ícono), **solo para administradores**. Muestra los KPIs de todo el sistema — tickets creados, cerrados y el tiempo promedio de resolución — filtrables por **Mes**, **Año**, **Tipo** de solicitud (Soporte Técnico / Soporte Oracle) y **Empresa**. Cuando dejas el filtro de Tipo o Empresa en "Todos"/"Todas", además desglosa los números por cada categoría o cada empresa por separado, para comparar de un vistazo.
-- **`pages/3_🔐_Administrador.py`** — página **independiente** (antes era una pestaña dentro de "Sistema IT"; aparece como "🔐 Administrador" en la barra lateral, con su propio ícono), también solo para administradores. Muestra al equipo de TI como una **lista compacta** (nombre, si es admin, activo/desactivado) con un botón "✏️ Editar" por persona — al hacer clic ahí se abre el detalle completo de esa persona (nombre/usuario/correo, restablecer contraseña, categorías que atiende, subir/bajar de administrador, activar/desactivar, eliminar), con un botón "← Volver a la lista" para regresar. Así no hay que hacer scroll entre los formularios de todo el equipo para editar a una sola persona. El sistema nunca deja quitarle el admin, desactivar ni eliminar al último administrador activo que quede, para que nadie se quede sin poder entrar a administrar el equipo. Más abajo en esa misma página están los **📱 Códigos QR de acceso por empresa** (ver la sección de abajo) y, al final, los **✉️ Correos de aviso por categoría** (ver más abajo).
+if not db.firebase_conectado():
+    st.warning(
+        "⚠️ **Firebase todavía no está conectado.** Estás viendo esta app en **modo de práctica**: "
+        "los tickets son temporales y se pierden al cerrar el servidor. Agrega las credenciales de "
+        "Firebase en los secretos de Streamlit Cloud (las mismas que usa la plataforma comercial) "
+        "para guardar tickets de verdad.",
+        icon="⚠️",
+    )
 
-  **Hay dos formas de agregar más administradores:** (1) en "➕ Agregar técnico o administrador", marca la casilla "🔑 Administrador del panel" al crear la cuenta nueva, o (2) si la persona ya tiene cuenta como técnico, entra a su fila → pestaña "⚙️ Permisos" → "⬆️ Hacer administrador". No hay límite de cuántos administradores puede haber.
-- **`utils.py`** — genera la **Orden de Solicitud en PDF** de cada ticket (ver más abajo), con `fpdf2`.
-- **`database.py`** — usa el **mismo proyecto de Firebase** que ya tienes conectado en la plataforma comercial (mismas credenciales), pero en colecciones nuevas (con el prefijo `it_`) para que nunca se mezclen los datos.
+_, col_logo, _ = st.columns([1, 1.2, 1])
+with col_logo:
+    try:
+        st.image(LOGO_SOPORTE_PATH, use_container_width=True)
+    except Exception:
+        pass
+st.title("🛠️ Soporte Técnico y de Sistemas")
 
-**Nota sobre "Dashboard" y "Administrador" en la barra lateral:** cualquier técnico (no solo los administradores) va a **ver listadas** esas dos páginas en su barra lateral, junto con "Sistema IT" — Streamlit muestra ahí todas las páginas que existen, no las esconde según el rol. Pero si un técnico sin permisos de administrador hace clic en cualquiera de las dos, lo que ve es un mensaje de "esta sección es solo para administradores", nunca el contenido. Es decir: la protección real está adentro de la página, no en que aparezca o no en el menú.
+st.divider()
 
-## 🚦 Urgencia de cada ticket
+tab_nuevo, tab_consultar = st.tabs(["📝 Reportar un problema", "🔍 Consultar un ticket"])
 
-Al reportar un problema, el solicitante también marca qué tan urgente es:
+# ---------------------------------------------------------------------------
+# Reportar un problema — widgets sueltos (NO st.form): el selector de área
+# necesita revelar un campo de texto en cuanto se elige "Otra (escribir)", y
+# eso solo pasa con un rerun inmediato, cosa que un st.form no hace hasta que
+# se presiona el botón de enviar (mismo motivo por el que Minutas de Tienda,
+# en la plataforma comercial, tampoco usa st.form para su formulario).
+# ---------------------------------------------------------------------------
+with tab_nuevo:
+    st.session_state.setdefault("ticket_form_key", 0)
+    sufijo = st.session_state["ticket_form_key"]
 
-| Urgencia | Color/ícono | Significado |
-|---|---|---|
-| **Normal** | ⚫ negro | Puede esperar su turno normal. |
-| **Urge** | 🟡 amarillo | Necesita atención pronto, no es una emergencia. |
-| **Crítico** | 🔴 rojo | Le bloquea el trabajo — atenderlo lo antes posible. |
-| **Emergencia** | 🚨 rojo, parpadeando | Situación urgente que necesita atención inmediata (ej. un sistema caído para todos). |
+    nombre = st.text_input("Nombre completo *", key=f"ti_nombre_{sufijo}")
+    correo = st.text_input("Correo electrónico *", key=f"ti_correo_{sufijo}")
+    telefono = st.text_input("Teléfono *", key=f"ti_telefono_{sufijo}")
 
-Esa urgencia se ve reflejada como un chip de color en cada tarjeta del Tablero y del Historial (Sistema IT), en "Consultar un ticket" (app.py) y en la Orden de Solicitud en PDF. Además, si el solicitante marca **Crítico** o **Emergencia**, el correo de aviso al personal de soporte (ver la sección de abajo) sale marcado en el asunto para que no se pierda entre el resto de la bandeja de entrada.
+    # Si llegaron aquí escaneando el código QR de una empresa (ver
+    # Administrador → 📱 Código QR de acceso), el link trae "?empresa=..." y
+    # se preselecciona esa empresa en vez de la primera de la lista.
+    _empresa_qp = st.query_params.get("empresa")
+    _empresa_index = EMPRESAS_TICKET.index(_empresa_qp) if _empresa_qp in EMPRESAS_TICKET else 0
+    empresa = st.selectbox("Empresa", EMPRESAS_TICKET, index=_empresa_index, key=f"ti_empresa_{sufijo}")
+    areas_disponibles = AREAS_POR_EMPRESA.get(empresa, [])
+    area_sel = st.selectbox("Tienda / área", areas_disponibles + [ESCRIBIR_AREA_NUEVA], key=f"ti_area_sel_{sufijo}")
+    if area_sel == ESCRIBIR_AREA_NUEVA:
+        area_final = st.text_input("¿Cuál área?", key=f"ti_area_otra_{sufijo}")
+    else:
+        area_final = area_sel
 
-## 📄 Orden de Solicitud en PDF
+    categoria = st.radio(
+        "Tipo de solicitud *", CATEGORIAS_TICKET,
+        captions=[CATEGORIA_DESCRIPCION[c] for c in CATEGORIAS_TICKET], key=f"ti_categoria_{sufijo}",
+    )
+    urgencia = st.radio(
+        "Urgencia *", URGENCIAS_TICKET,
+        captions=[URGENCIA_DESCRIPCION[u] for u in URGENCIAS_TICKET],
+        index=URGENCIAS_TICKET.index(URGENCIA_DEFECTO), horizontal=True, key=f"ti_urgencia_{sufijo}",
+    )
+    descripcion = st.text_area("Describe tu problema *", key=f"ti_descripcion_{sufijo}", height=120)
+    foto = st.file_uploader(
+        "Adjuntar una foto o captura de pantalla (opcional)", type=["png", "jpg", "jpeg", "pdf"],
+        help=f"Tamaño máximo: ~{TICKET_FOTO_MAX_BYTES // 1000} KB.", key=f"ti_foto_{sufijo}",
+    )
 
-Cada ticket tiene su propia "Orden de Solicitud" en PDF, generada al vuelo (no se guarda en ningún lado — se arma de nuevo cada vez que se necesita) con los datos del ticket: empresa, tienda/área, fecha, solicitante, estado, a quién está asignado y la descripción del problema.
+    if st.button("📨 Enviar solicitud", key=f"ti_enviar_{sufijo}", use_container_width=True):
+        if not nombre.strip() or not correo.strip() or not telefono.strip() or not descripcion.strip():
+            st.error("Completa tu nombre, correo, teléfono y la descripción del problema.")
+        elif not db.correo_es_valido(correo):
+            st.error("Escribe un correo electrónico válido (ej. nombre@dominio.com).")
+        else:
+            foto_b64 = foto_nombre = foto_tipo = None
+            error_foto = None
+            if foto is not None:
+                try:
+                    foto_b64, foto_nombre, foto_tipo = archivo_a_b64(foto, TICKET_FOTO_MAX_BYTES)
+                except ValueError as e:
+                    error_foto = str(e)
 
-El logo que lleva depende de la empresa del ticket:
-- **Visión Digital** → su logo (`assets/logo_orden_vision_digital.jpg`).
-- **Vitatrac GT** y **Vitatrac HN** → el mismo logo de Vitatrac (`assets/logo_orden_vitatrac.png`).
+            if error_foto:
+                st.error(error_foto)
+            else:
+                numero = db.create_ticket(
+                    nombre, correo, telefono, area_final, categoria, descripcion,
+                    empresa=empresa, urgencia=urgencia, foto_b64=foto_b64, foto_nombre=foto_nombre,
+                    foto_tipo=foto_tipo,
+                )
+                st.session_state["ticket_form_key"] += 1  # limpia el formulario (nuevos keys = nuevos widgets)
+                st.success(
+                    f"✅ ¡Listo! Tu ticket es **#TI-{numero:04d}**. Guárdalo para consultar el estado en "
+                    "la pestaña 'Consultar un ticket'. El equipo de TI le dará seguimiento pronto."
+                )
 
-Esta orden se manda por correo automáticamente en dos momentos:
-1. **Al crear el ticket** — al personal de soporte de esa categoría y, si dejó correo válido, al solicitante (ver la siguiente sección).
-2. **Al asignarlo a un técnico** — se le manda de nuevo, esta vez directo al correo de esa persona (el que le hayas puesto en Administrador → editar su perfil). Si ese técnico no tiene correo guardado, simplemente no se le manda nada a él (no truena, y el ticket se asigna igual).
+# ---------------------------------------------------------------------------
+# Consultar un ticket — cualquiera con el número puede ver su estado y el
+# historial de seguimiento, sin necesitar cuenta ni contraseña.
+# ---------------------------------------------------------------------------
+with tab_consultar:
+    numero_txt = st.text_input("Número de ticket (ej. TI-0004 o solo 4)", key="ti_consulta_numero")
+    if st.button("Buscar", key="ti_consulta_buscar"):
+        digitos = "".join(c for c in numero_txt if c.isdigit())
+        ticket = db.get_ticket_por_numero(int(digitos)) if digitos else None
+        if not ticket:
+            st.warning("No se encontró ningún ticket con ese número.")
+        else:
+            st.markdown(f"### {ESTADO_EMOJI.get(ticket['estado'], '•')} Ticket #TI-{ticket['numero']:04d} — {ticket['estado']}")
+            st.markdown(urgencia_badge_html(ticket.get("urgencia")), unsafe_allow_html=True)
+            st.caption(
+                f"{ticket['categoria']} · {ticket.get('empresa') or '—'} · {ticket.get('area') or '—'} · "
+                f"reportado por {ticket['nombre_solicitante']}"
+            )
+            st.write(ticket["descripcion"])
+            if ticket.get("asignado_a_nombre"):
+                st.caption(f"👤 Asignado a: {ticket['asignado_a_nombre']}")
+            historial = ticket.get("historial") or []
+            if historial:
+                with st.expander(f"📜 Historial ({len(historial)})"):
+                    for h in historial:
+                        st.caption(f"🕒 {(h.get('fecha') or '')[:16].replace('T', ' ')} — {h.get('detalle')}")
 
-## ✉️ Avisos por correo cuando entra un ticket nuevo
-
-Cada vez que alguien reporta un problema, el sistema manda automáticamente (con la Orden de Solicitud en PDF adjunta):
-
-1. Un correo al **personal de soporte** — a la lista de correos que configures en Administrador → "✉️ Correos de aviso por categoría", una lista para tickets de **Soporte Técnico** y otra para **Soporte Oracle** (puede ser la misma gente en ambas, o gente distinta — tú decides).
-2. Un correo de confirmación al **solicitante**, con el correo que dejó en el campo "Correo electrónico" del formulario (es obligatorio y se valida que tenga formato de correo antes de guardar el ticket, así que siempre le llega).
-
-Para que esto funcione, hay que conectar una cuenta de Gmail que mande los correos (es la MISMA cuenta que ya usa la plataforma comercial para las Minutas de Tienda — si ya la configuraste allá, es copiar y pegar el mismo bloque):
-
-1. En **Settings → Secrets** de esta app (Soporte TI) en Streamlit Cloud, agrega (o pega, si ya la tienes en la otra app):
-   ```
-   [gmail_notificaciones]
-   usuario = "correo@tudominio.com"
-   app_password = "xxxx xxxx xxxx xxxx"
-   ```
-   (`app_password` es una "contraseña de aplicación" de Gmail, no la contraseña normal de la cuenta — se genera desde la configuración de seguridad de esa cuenta de Google.)
-2. Dale "Save" y reinicia la app.
-3. Entra a Administrador → "✉️ Correos de aviso por categoría" y guarda a quién avisar en cada categoría.
-
-Mientras esto no esté configurado, los tickets se siguen guardando normal — simplemente no se manda ningún correo.
-
-## 📱 Códigos QR de acceso por empresa
-
-En Administrador hay una sección para generar un **código QR por cada empresa** (Visión Digital, Vitatrac GT, Vitatrac HN). Al escanearlo, el solicitante llega directo a la pestaña "Reportar un problema" con su empresa ya seleccionada — no tiene que escribir el link a mano ni elegir su empresa. Puedes imprimirlo o pegarlo (por ejemplo, en cada tienda/oficina).
-
-Para usarlo:
-
-1. Entra a Administrador → "📱 Código QR de acceso por empresa" y pega ahí el **link público** de esta app (el mismo que ya compartes para reportar problemas — Streamlit te lo da al desplegar, algo como `https://tu-app.streamlit.app`) y dale "Guardar link". Solo hay que hacerlo una vez; queda guardado para todos.
-2. En cuanto lo guardes, van a aparecer un código QR y su link por cada empresa, cada uno con un botón para descargarlo como imagen PNG.
-
-Si el link público de la app cambia en algún momento (por ejemplo, si mueves el despliegue a otra cuenta de Streamlit Cloud), solo hay que volver a esta sección y guardar el nuevo link — los QR viejos que ya imprimiste dejarían de funcionar, así que tendrías que reimprimirlos.
-
-## Cómo desplegarlo (primera vez)
-
-1. **Crea un repositorio nuevo en GitHub** (por ejemplo `soporte-ti-vision-digital`), separado del repositorio de la plataforma comercial.
-2. Sube ahí **todos** estos archivos y carpetas, manteniendo la misma estructura (ojo: `pages/` y `assets/` son carpetas, no archivos sueltos):
-   - `app.py`
-   - `auth.py`
-   - `database.py`
-   - `config.py`
-   - `utils.py`
-   - `fake_firestore.py`
-   - `requirements.txt`
-   - `pages/1_🛠️_Sistema_IT.py`
-   - `pages/2_📊_Dashboard.py`
-   - `pages/3_🔐_Administrador.py`
-   - `assets/logo.png`
-   - `assets/logo_soporte.png`
-   - `assets/logo_orden_vision_digital.jpg`
-   - `assets/logo_orden_vitatrac.png`
-   - `assets/favicon.png`
-3. Entra a [share.streamlit.io](https://share.streamlit.io) (donde ya tienes la plataforma comercial) y crea una **app nueva**, apuntando al repositorio que acabas de crear, con `app.py` como archivo principal.
-4. En **Settings → Secrets** de esta app nueva, pega el mismo bloque `[firebase]` que ya tienes configurado en la app de la plataforma comercial (cópialo tal cual de ahí — es el mismo proyecto de Firebase, solo lo está usando una app más). Si algún día quieres separar los proyectos de Firebase, avísame y lo migramos.
-5. Dale "Deploy". En un par de minutos tendrás dos links:
-   - El link principal (raíz) de la app — **ese es el que compartes con todos los empleados** para reportar problemas (por correo, WhatsApp, o hasta un QR si quieres).
-   - Desde el menú lateral de esa misma app, el enlace a "Sistema IT" — **ese es el que usa el equipo de soporte** para atender los tickets (con su login).
-
-## Primer uso
-
-1. Comparte el link principal con un par de personas para probar que puedan reportar un ticket sin problema.
-2. Entra tú (o quien vaya a liderar el equipo de TI) al link de "Sistema IT" y crea la primera cuenta — queda como administrador y desde ahí puedes agregar al resto de tus técnicos.
-3. Reporta un ticket de prueba desde el link público y confirma que aparece en la columna "Nuevo" del panel.
-
-## Actualizaciones futuras
-
-Igual que con la plataforma comercial: cuando yo te entregue un archivo actualizado, lo reemplazas completo en GitHub (con "Commit changes") y reinicias esta app desde "Manage app" → "Reboot" en Streamlit Cloud.
-
-**Importante — esta vez el panel interno cambió de nombre de archivo** (de `pages/1_Panel_TI.py` a `pages/1_Sistema_IT.py`, para que en la barra lateral se vea "Sistema IT" en vez de "Panel TI"). Reemplazar el contenido de `1_Panel_TI.py` NO es suficiente — hay que **borrar** `pages/1_Panel_TI.py` de GitHub y **subir** `pages/1_Sistema_IT.py` como un archivo nuevo; si dejas los dos, te van a aparecer las dos pestañas duplicadas en la barra lateral.
-
-**Importante — `requirements.txt` también cambió otra vez** (ahora se agregó `qrcode`, la librería que genera los códigos QR de acceso por empresa — antes ya se había agregado `fpdf2`, la de la Orden de Solicitud en PDF). Reemplázalo también en GitHub — si no, la sección de códigos QR de Administrador va a avisar que falta instalarla. Este "Reboot" en particular puede tardar un poquito más de lo normal porque Streamlit Cloud tiene que instalar la librería nueva.
-
-**Importante — esta vez hay dos páginas nuevas.** "Administrador" salió de adentro de "Sistema IT" y ahora es su propio archivo, y se agregó "Dashboard". Esto quiere decir que además de reemplazar los archivos que ya tenías, hay que **subir dos archivos nuevos** a la carpeta `pages/` de GitHub (con "Add file" → "Upload files", igual que la primera vez):
-- `pages/2_📊_Dashboard.py`
-- `pages/3_🔐_Administrador.py`
-
-Si solo reemplazas `pages/1_🛠️_Sistema_IT.py` y no subes estos dos, no vas a tener errores, pero tampoco vas a ver "Dashboard" ni "Administrador" en la barra lateral (esa pestaña de Administrador ya no existe adentro de Sistema IT).
-
-**El logo de la barra lateral** (el que está encima del menú de páginas) ahora se ve más grande — no cambia ningún archivo adicional a los que ya ibas a reemplazar, es parte del mismo `auth.py`.
-
-**Importante — los 3 archivos de `pages/` volvieron a cambiar de nombre** (esta vez para agregarles un ícono en el menú, ver la sección de arriba):
-- `pages/1_Sistema_IT.py` → `pages/1_🛠️_Sistema_IT.py`
-- `pages/2_Dashboard.py` → `pages/2_📊_Dashboard.py`
-- `pages/3_Administrador.py` → `pages/3_🔐_Administrador.py`
-
-Igual que la vez pasada que renombramos "Panel TI" a "Sistema IT": reemplazar el CONTENIDO de los archivos viejos no alcanza — hay que **borrar los 3 archivos viejos** de la carpeta `pages/` en GitHub y **subir los 3 nuevos** (con esos nombres exactos, íconos incluidos) como archivos nuevos. Si dejas los viejos y los nuevos juntos, vas a ver las páginas duplicadas en la barra lateral. Para escribir el emoji en el nombre al subir el archivo en GitHub, lo más fácil es copiar y pegar el nombre completo (con el emoji) tal cual aparece arriba, en vez de escribirlo a mano.
-
-**El chip de urgencia** (Normal/Urge/Crítico/Emergencia, ver la sección de arriba) no necesita ningún archivo ni librería nueva — ya viene incluido en `app.py`, `database.py`, `utils.py` y `pages/1_🛠️_Sistema_IT.py`.
-
-**La lista compacta de Administrador y el límite más alto de la foto adjunta** (~600 KB, antes ~350 KB) tampoco necesitan ningún archivo ni librería nueva — solo reemplazar `pages/3_🔐_Administrador.py`, `config.py` y `app.py` como de costumbre.
+            try:
+                st.download_button(
+                    "📄 Descargar Orden de Solicitud (PDF)",
+                    data=orden_solicitud_pdf_bytes(ticket),
+                    file_name=f"TI-{ticket['numero']:04d}.pdf", mime="application/pdf",
+                    use_container_width=True, key="ti_consulta_descargar_pdf",
+                )
+            except Exception:
+                pass
