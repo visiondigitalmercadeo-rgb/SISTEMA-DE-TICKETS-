@@ -8,7 +8,14 @@ from config import (
 from utils import archivo_a_b64
 
 st.set_page_config(page_title=f"Soporte TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="centered")
-st.logo(LOGO_SOPORTE_PATH, size="large")
+try:
+    # Si el archivo del logo no existe/está dañado en el despliegue, que
+    # no truene TODA la página (a diferencia de st.image, st.logo no
+    # tiene un "modo silencioso" propio) — se sigue mostrando la app
+    # normal, solo sin el logo arriba del listado de páginas.
+    st.logo(LOGO_SOPORTE_PATH, size="large")
+except Exception:
+    pass
 
 if not db.firebase_conectado():
     st.warning(
