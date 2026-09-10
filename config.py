@@ -110,3 +110,32 @@ MESES_ES = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
+
+# ---------------------------------------------------------------------------
+# Urgencia: el propio solicitante la marca al reportar el problema (ver
+# app.py) y el equipo de TI la ve reflejada como color/ícono en cada tarjeta
+# del tablero y del historial, en la Orden de Solicitud en PDF, en "Consultar
+# un ticket" y en el aviso por correo (ver pages/1_Sistema_IT.py, utils.py,
+# app.py y database.enviar_avisos_ticket_nuevo). "Emergencia" además
+# parpadea en el tablero (ver el CSS en auth.py) para que salte a la vista
+# de inmediato.
+URGENCIAS_TICKET = ["Normal", "Urge", "Crítico", "Emergencia"]
+URGENCIA_DEFECTO = "Normal"
+URGENCIA_EMOJI = {
+    "Normal": "⚫",
+    "Urge": "🟡",
+    "Crítico": "🔴",
+    "Emergencia": "🚨",
+}
+URGENCIA_COLOR = {
+    "Normal": "#111827",   # negro
+    "Urge": "#b45309",     # amarillo/ámbar (más legible que un amarillo puro sobre fondo blanco)
+    "Crítico": "#dc2626",  # rojo
+    "Emergencia": "#dc2626",  # rojo, con el ícono parpadeando (ver utils.urgencia_badge_html)
+}
+URGENCIA_DESCRIPCION = {
+    "Normal": "Puede esperar su turno normal.",
+    "Urge": "Necesita atención pronto, no es una emergencia pero no debería esperar mucho.",
+    "Crítico": "Te bloquea el trabajo — atenderlo lo antes posible.",
+    "Emergencia": "Situación urgente que necesita atención inmediata (ej. un sistema caído para todos).",
+}
