@@ -147,6 +147,22 @@ def _dibujar_tablero():
                                 db.agregar_comentario_ticket(tid, user["nombre"], comentario_nuevo)
                                 st.rerun()
 
+                    # Eliminar ticket — solo lo ve/puede usarlo un administrador.
+                    if user["es_admin"]:
+                        with st.expander("🗑️ Eliminar ticket"):
+                            st.caption("Esto borra el ticket por completo — no se puede deshacer.")
+                            confirmar_borrado = st.checkbox(
+                                "Confirmo que quiero eliminar este ticket permanentemente",
+                                key=f"panel_confirmar_del_ticket_{tid}",
+                            )
+                            if st.button(
+                                "🗑️ Eliminar ticket permanentemente", key=f"panel_del_ticket_{tid}",
+                                use_container_width=True, disabled=not confirmar_borrado,
+                            ):
+                                db.delete_ticket(tid)
+                                st.success(f"Ticket #TI-{t['numero']:04d} eliminado.")
+                                st.rerun()
+
 
 def _fila_usuario(t, es_yo):
     tid = t["id"]
