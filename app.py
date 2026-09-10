@@ -1,5 +1,6 @@
 import streamlit as st
 
+import auth
 import database as db
 from config import (
     AREAS_POR_EMPRESA, CATEGORIA_DESCRIPCION, CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET,
@@ -8,14 +9,7 @@ from config import (
 from utils import archivo_a_b64, orden_solicitud_pdf_bytes
 
 st.set_page_config(page_title=f"Soporte TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="centered")
-try:
-    # Si el archivo del logo no existe/está dañado en el despliegue, que
-    # no truene TODA la página (a diferencia de st.image, st.logo no
-    # tiene un "modo silencioso" propio) — se sigue mostrando la app
-    # normal, solo sin el logo arriba del listado de páginas.
-    st.logo(LOGO_SOPORTE_PATH, size="large")
-except Exception:
-    pass
+auth.mostrar_logo_sidebar()
 
 if not db.firebase_conectado():
     st.warning(
