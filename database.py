@@ -25,7 +25,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 import fake_firestore
-from config import BASE_DIR, EMPRESA_NOMBRE
+from config import BASE_DIR, CATEGORIAS_TICKET, EMPRESA_NOMBRE
 from utils import orden_solicitud_pdf_bytes
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -202,6 +202,17 @@ def update_it_usuario_perfil(uid, nombre, username, categorias_acceso=None, corr
         "categorias_acceso": list(categorias_acceso) if categorias_acceso else [],
         "correo": (correo or "").strip() or None,
     })
+
+
+def categorias_validas_tecnico(tecnico: dict) -> list:
+    """Las 'categorías que atiende' guardadas de un técnico, descartando
+    cualquiera que ya no exista en config.CATEGORIAS_TICKET (por ejemplo si
+    se renombró o se quitó una categoría después de asignársela a alguien).
+    Lista vacía = puede atender todas las categorías actuales. Se usa tanto
+    en el Tablero (para filtrar a quién se puede asignar un ticket) como en
+    Administrador (para mostrar/editar los accesos de cada técnico)."""
+    accesos = tecnico.get("categorias_acceso") or []
+    return [a for a in accesos if a in CATEGORIAS_TICKET]
 
 
 def set_it_usuario_admin(uid, es_admin):
@@ -682,3 +693,87 @@ def calcular_kpis_historial(tickets_historicos: list, anio: int, mes: int) -> di
             empresa = t.get("empresa") or "—"
             por_empresa[empresa] = por_empresa.get(empresa, 0) + 1
     return por_empresa
+
+
+def calcular_kpis_dashboard(tickets: list, anio: int, mes: int, categoria: str = None, empresa: str = None) -> dict:
+    """KPIs agregados para la pestaña Dashboard, sobre TODOS los tickets del
+    sistema (los que siguen activos en el Tablero y los ya archivados a
+    Historial), filtrados por mes/año y, opcionalmente, por categoría y/o
+    empresa. Retorna:
+    - creados: cuántos tickets se CREARON dentro de ese mes (con los
+      filtros de categoría/empresa aplicados).
+    - por_categoria_creados / por_empresa_creados: desglose de 'creados'
+      (siempre sobre todas las categorías/empresas, sin importar el filtro
+      — útil para mostrarlo solo cuando el filtro está en "Todos/Todas").
+    - cerrados: cuántos tickets quedaron archivados (ver ticket_es_historico)
+      DENTRO de ese mes — no importa el mes en que se hayan creado.
+    - por_categoria_cerrados / por_empresa_cerrados: desglose de 'cerrados'.
+    - horas_promedio_resolucion: horas promedio desde que se creó un ticket
+      hasta que se archivó, sobre los tickets cerrados ese mes (con los
+      filtros aplicados); None si no hubo ninguno en ese periodo."""
+    def coincide_filtros(t):
+        if categoria and t.get("categoria") != categoria:
+            return False
+        if empresa and t.get("empresa") != empresa:
+            return False
+        return True
+
+    candidatos = [t for t in tickets if coincide_filtros(t)]
+
+    creados = []
+    for t in candidatos:
+        creado_en = t.get("creado_en")
+        if not creado_en:
+            continue
+        try:
+            fecha = datetime.fromisoformat(creado_en)
+        except ValueError:
+            continue
+        if fecha.year == anio and fecha.month == mes:
+            creados.append(t)
+
+    por_categoria_creados, por_empresa_creados = {}, {}
+    for t in creados:
+        cat, emp = t.get("categoria") or "—", t.get("empresa") or "—"
+        por_categoria_creados[cat] = por_categoria_creados.get(cat, 0) + 1
+        por_empresa_creados[emp] = por_empresa_creados.get(emp, 0) + 1
+
+    cerrados = []
+    horas_resolucion = []
+    for t in candidatos:
+        if not ticket_es_historico(t):
+            continue
+        fecha_cierre_txt = _entro_a_estado_actual(t)
+        if not fecha_cierre_txt:
+            continue
+        try:
+            fecha_cierre = datetime.fromisoformat(fecha_cierre_txt)
+        except ValueError:
+            continue
+        if fecha_cierre.year != anio or fecha_cierre.month != mes:
+            continue
+        cerrados.append(t)
+        creado_en = t.get("creado_en")
+        if creado_en:
+            try:
+                horas_resolucion.append((fecha_cierre - datetime.fromisoformat(creado_en)).total_seconds() / 3600)
+            except ValueError:
+                pass
+
+    por_categoria_cerrados, por_empresa_cerrados = {}, {}
+    for t in cerrados:
+        cat, emp = t.get("categoria") or "—", t.get("empresa") or "—"
+        por_categoria_cerrados[cat] = por_categoria_cerrados.get(cat, 0) + 1
+        por_empresa_cerrados[emp] = por_empresa_cerrados.get(emp, 0) + 1
+
+    return {
+        "creados": len(creados),
+        "por_categoria_creados": por_categoria_creados,
+        "por_empresa_creados": por_empresa_creados,
+        "cerrados": len(cerrados),
+        "por_categoria_cerrados": por_categoria_cerrados,
+        "por_empresa_cerrados": por_empresa_cerrados,
+        "horas_promedio_resolucion": (
+            sum(horas_resolucion) / len(horas_resolucion) if horas_resolucion else None
+        ),
+    }
