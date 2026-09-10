@@ -575,16 +575,54 @@ def _entro_a_estado_actual(ticket: dict):
     return entrada
 
 
-def calcular_kpis_tablero(tickets: list) -> dict:
+def fecha_entro_a_estado_actual(ticket: dict):
+    """Versión pública de _entro_a_estado_actual — la usa la UI (ver
+    pages/1_Sistema_IT.py) para mostrar, por ejemplo, la fecha en que un
+    ticket del Historial quedó 'Resuelto'/'Cerrado'."""
+    return _entro_a_estado_actual(ticket)
+
+
+def ticket_es_historico(ticket: dict) -> bool:
+    """True si el ticket ya no debe verse en el Tablero sino en la sección
+    Historial: lleva un día calendario completo (o más) como 'Resuelto' —
+    es decir, se resolvió antes de HOY, no hoy mismo — así el mismo día que
+    se resuelve un ticket lo sigues viendo en el tablero, y hasta que
+    cambia de día se archiva solo, sin necesidad de moverlo manualmente a
+    un estado 'Cerrado'. También cuenta como histórico cualquier ticket que
+    haya quedado en el estado 'Cerrado' del flujo viejo (de antes de este
+    cambio), para no perder esos registros de vista."""
+    estado = ticket.get("estado")
+    if estado == "Cerrado":
+        return True
+    if estado != "Resuelto":
+        return False
+    entrada = _entro_a_estado_actual(ticket)
+    if not entrada:
+        return False
+    try:
+        return datetime.fromisoformat(entrada).date() < datetime.now().date()
+    except ValueError:
+        return False
+
+
+def calcular_kpis_tablero(tickets: list, tickets_activos: list = None) -> dict:
     """KPIs para el encabezado del tablero:
-    - tickets_mes: cuántos tickets se crearon en el mes calendario actual.
+    - tickets_mes: cuántos tickets se crearon en el mes calendario actual
+      (se calcula sobre 'tickets' — todos, incluyendo los ya archivados a
+      Historial, para que el conteo de "cuántos entraron este mes" no
+      cambie según si ya se resolvieron o no).
     - por_categoria_mes: {categoria: cantidad} de esos tickets del mes.
     - horas_promedio_por_estado: {estado: horas_promedio} — el tiempo
       promedio que llevan AHORA MISMO los tickets que están actualmente
-      sentados en cada columna del tablero (no cuenta el tiempo que
-      pasaron en columnas anteriores, ni tickets que ya se movieron de
-      ahí). Un estado sin ningún ticket en este momento simplemente no
-      aparece en el diccionario."""
+      sentados en cada columna del tablero (se calcula sobre
+      'tickets_activos' — si no se indica, se usa 'tickets' — para no
+      contar ahí los que ya se archivaron a Historial, que inflarían el
+      promedio de 'Resuelto' con tickets resueltos hace meses). Un estado
+      sin ningún ticket en este momento simplemente no aparece en el
+      diccionario."""
+    if tickets_activos is None:
+        tickets_activos = tickets
+
     ahora = datetime.now()
     inicio_mes = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -605,7 +643,7 @@ def calcular_kpis_tablero(tickets: list) -> dict:
         por_categoria_mes[cat] = por_categoria_mes.get(cat, 0) + 1
 
     horas_por_estado = {}
-    for t in tickets:
+    for t in tickets_activos:
         entrada = _entro_a_estado_actual(t)
         if not entrada:
             continue
@@ -624,3 +662,23 @@ def calcular_kpis_tablero(tickets: list) -> dict:
         "por_categoria_mes": por_categoria_mes,
         "horas_promedio_por_estado": horas_promedio_por_estado,
     }
+
+
+def calcular_kpis_historial(tickets_historicos: list, anio: int, mes: int) -> dict:
+    """{empresa: cantidad} de tickets del Historial (ya archivados, ver
+    ticket_es_historico) que se resolvieron/cerraron dentro del mes y año
+    indicados — para el KPI 'cuántas cerradas por empresa' de la sección
+    Historial, con su selector de mes."""
+    por_empresa = {}
+    for t in tickets_historicos:
+        entrada = _entro_a_estado_actual(t)
+        if not entrada:
+            continue
+        try:
+            fecha = datetime.fromisoformat(entrada)
+        except ValueError:
+            continue
+        if fecha.year == anio and fecha.month == mes:
+            empresa = t.get("empresa") or "—"
+            por_empresa[empresa] = por_empresa.get(empresa, 0) + 1
+    return por_empresa
