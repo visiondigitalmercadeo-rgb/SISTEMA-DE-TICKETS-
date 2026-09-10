@@ -74,12 +74,16 @@ c3.metric("⏱️ Tiempo promedio de resolución", formatear_horas(kpis["horas_p
 st.divider()
 
 if tipo_sel == "Todos":
-    st.markdown("##### Por tipo de solicitud")
+    st.markdown("##### Por tipo de solicitud (rubro)")
     cols_tipo = st.columns(len(CATEGORIAS_TICKET))
     for col, cat in zip(cols_tipo, CATEGORIAS_TICKET):
         with col:
             st.metric(f"{cat} — creados", kpis["por_categoria_creados"].get(cat, 0))
             st.metric(f"{cat} — cerrados", kpis["por_categoria_cerrados"].get(cat, 0))
+            st.metric(
+                f"{cat} — tiempo promedio",
+                formatear_horas(kpis["horas_promedio_por_categoria"].get(cat)),
+            )
     st.divider()
 
 if empresa_sel == "Todas":
@@ -89,3 +93,51 @@ if empresa_sel == "Todas":
         with col:
             st.metric(f"{emp} — creados", kpis["por_empresa_creados"].get(emp, 0))
             st.metric(f"{emp} — cerrados", kpis["por_empresa_cerrados"].get(emp, 0))
+
+st.divider()
+
+st.markdown("##### 📥 Descargar este reporte")
+st.caption(
+    "Incluye todos los KPIs del sistema: lo que ves arriba de este Dashboard (con el mes/año/tipo/"
+    "empresa que tengas elegido) más el resumen en vivo del Tablero (tickets de este mes y tiempo "
+    "que llevan ahora mismo en cada columna)."
+)
+
+kpis_tablero_export = db.calcular_kpis_tablero(todos)
+periodo_texto = f"{mes_sel} {anio_sel}"
+partes_filtro = []
+if categoria_filtro:
+    partes_filtro.append(f"Tipo: {tipo_sel}")
+if empresa_filtro:
+    partes_filtro.append(f"Empresa: {empresa_sel}")
+filtros_texto = " · ".join(partes_filtro) if partes_filtro else "Todos los tipos y empresas"
+
+nombre_archivo_base = f"KPIs_{EMPRESA_NOMBRE.replace(' ', '_')}_{mes_sel}_{anio_sel}"
+
+col_dl_excel, col_dl_pdf = st.columns(2)
+with col_dl_excel:
+    try:
+        from utils import informe_kpis_excel_bytes
+        excel_bytes = informe_kpis_excel_bytes(periodo_texto, filtros_texto, kpis, kpis_tablero_export)
+        st.download_button(
+            "📊 Descargar en Excel",
+            data=excel_bytes,
+            file_name=f"{nombre_archivo_base}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    except Exception as e:
+        st.error(f"No se pudo generar el Excel: {e}")
+with col_dl_pdf:
+    try:
+        from utils import informe_kpis_pdf_bytes
+        pdf_bytes = informe_kpis_pdf_bytes(periodo_texto, filtros_texto, kpis, kpis_tablero_export)
+        st.download_button(
+            "📄 Descargar en PDF",
+            data=pdf_bytes,
+            file_name=f"{nombre_archivo_base}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    except Exception as e:
+        st.error(f"No se pudo generar el PDF: {e}")
