@@ -71,6 +71,12 @@ c1.metric("🆕 Tickets creados", kpis["creados"])
 c2.metric("✅ Tickets cerrados", kpis["cerrados"])
 c3.metric("⏱️ Tiempo promedio de resolución", formatear_horas(kpis["horas_promedio_resolucion"]))
 
+# Solo el tiempo -- no de qué ticket se trata -- del más rápido y el más
+# lento entre los cerrados de ese periodo (con los filtros aplicados).
+c4, c5 = st.columns(2)
+c4.metric("⚡ Resolución más rápida", formatear_horas(kpis["horas_resolucion_minima"]))
+c5.metric("🐢 Resolución más lenta", formatear_horas(kpis["horas_resolucion_maxima"]))
+
 st.divider()
 
 if tipo_sel == "Todos":
