@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import streamlit as st
 
 import auth
@@ -7,6 +9,11 @@ from config import (
     TICKET_SIGUIENTE_ESTADO,
 )
 from utils import orden_solicitud_pdf_bytes
+
+MESES_ES = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
 
 st.set_page_config(page_title=f"Sistema IT — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
 try:
@@ -59,7 +66,12 @@ def _formatear_horas(horas):
 
 
 def _dibujar_kpis():
-    kpis = db.calcular_kpis_tablero(db.list_tickets())
+    todos = db.list_tickets()
+    # Los que ya se archivaron a Historial no deben contar en "tiempo que
+    # llevan ahora mismo en cada columna" — si no, un ticket resuelto hace
+    # meses inflaría para siempre el promedio de la columna "Resuelto".
+    activos = [t for t in todos if not db.ticket_es_historico(t)]
+    kpis = db.calcular_kpis_tablero(todos, activos)
 
     st.markdown("##### 📊 Tickets de este mes")
     cols_mes = st.columns(1 + len(CATEGORIAS_TICKET))
@@ -85,6 +97,10 @@ def _dibujar_tablero():
 
     filtro_categoria = st.selectbox("Filtrar por tipo", ["Todos"] + CATEGORIAS_TICKET, key="panel_filtro_categoria")
     tickets = db.list_tickets(categoria=None if filtro_categoria == "Todos" else filtro_categoria)
+    # Los que ya llevan un día completo como "Resuelto" (o quedaron
+    # "Cerrado" del flujo viejo) ya no se muestran aquí — pasaron solo a la
+    # sección "Historial", sin eliminarse.
+    tickets = [t for t in tickets if not db.ticket_es_historico(t)]
     tecnicos_activos = db.list_it_usuarios(solo_activos=True)
 
     columnas = st.columns(len(ESTADOS_TICKET))
@@ -178,6 +194,83 @@ def _dibujar_tablero():
                                 db.delete_ticket(tid)
                                 st.success(f"Ticket #TI-{t['numero']:04d} eliminado.")
                                 st.rerun()
+
+
+def _dibujar_historial():
+    st.caption(
+        "Tickets que ya salieron del tablero — se resolvieron y les pasó un día completo. No se "
+        "eliminan, solo se archivan aquí."
+    )
+
+    todos = db.list_tickets()
+    historicos = [t for t in todos if db.ticket_es_historico(t)]
+
+    # --- KPI: cuántos se cerraron por empresa, en el mes/año elegido ---
+    ahora = datetime.now()
+    anios_disponibles = sorted(
+        {ahora.year} | {
+            datetime.fromisoformat(t["creado_en"]).year
+            for t in todos if t.get("creado_en")
+        },
+        reverse=True,
+    )
+    col_mes, col_anio = st.columns(2)
+    with col_mes:
+        mes_sel = st.selectbox("Mes", MESES_ES, index=ahora.month - 1, key="hist_filtro_mes")
+    with col_anio:
+        anio_sel = st.selectbox(
+            "Año", anios_disponibles,
+            index=anios_disponibles.index(ahora.year) if ahora.year in anios_disponibles else 0,
+            key="hist_filtro_anio",
+        )
+    mes_num = MESES_ES.index(mes_sel) + 1
+
+    kpis_empresa = db.calcular_kpis_historial(historicos, anio_sel, mes_num)
+    st.markdown(f"##### 📊 Cerrados en {mes_sel} {anio_sel}, por empresa")
+    if kpis_empresa:
+        cols = st.columns(len(kpis_empresa))
+        for col, (empresa, cantidad) in zip(cols, kpis_empresa.items()):
+            col.metric(empresa, cantidad)
+    else:
+        st.caption("Ningún ticket se cerró ese mes.")
+
+    st.divider()
+
+    # --- Lista de tickets del historial, filtrada por tipo ---
+    filtro_categoria = st.selectbox(
+        "Filtrar por tipo", ["Todos"] + CATEGORIAS_TICKET, key="hist_filtro_categoria",
+    )
+    lista = [t for t in historicos if filtro_categoria == "Todos" or t["categoria"] == filtro_categoria]
+    lista.sort(key=lambda t: t.get("numero") or 0, reverse=True)
+
+    if not lista:
+        st.info("No hay tickets en el historial todavía.")
+
+    for t in lista:
+        tid = t["id"]
+        with st.container(border=True):
+            st.markdown(f"**#TI-{t['numero']:04d}** — {t['categoria']}")
+            st.caption(f"{t.get('empresa') or '—'} · {t.get('area') or '—'}")
+            st.markdown(f"👤 {t['nombre_solicitante']}")
+            st.write(t["descripcion"][:200] + ("…" if len(t["descripcion"]) > 200 else ""))
+            if t.get("asignado_a_nombre"):
+                st.caption(f"🔧 Atendido por: {t['asignado_a_nombre']}")
+            fecha_cierre = db.fecha_entro_a_estado_actual(t)
+            if fecha_cierre:
+                st.caption(f"🔒 Cerrado el {fecha_cierre[:10]}")
+
+            with st.expander("📜 Historial completo"):
+                for h in (t.get("historial") or []):
+                    st.caption(f"🕒 {(h.get('fecha') or '')[:16].replace('T', ' ')} — {h.get('detalle')}")
+
+            try:
+                st.download_button(
+                    "📄 Orden de Solicitud (PDF)",
+                    data=orden_solicitud_pdf_bytes(t), file_name=f"TI-{t['numero']:04d}.pdf",
+                    mime="application/pdf", use_container_width=True, key=f"hist_orden_pdf_{tid}",
+                )
+            except Exception:
+                pass
 
 
 def _fila_usuario(t, es_yo):
@@ -326,10 +419,16 @@ def _dibujar_admin():
 
 
 if user["es_admin"]:
-    tab_tablero, tab_admin = st.tabs(["📋 Tablero", "🔐 Administrador"])
+    tab_tablero, tab_historial, tab_admin = st.tabs(["📋 Tablero", "🗂️ Historial", "🔐 Administrador"])
     with tab_tablero:
         _dibujar_tablero()
+    with tab_historial:
+        _dibujar_historial()
     with tab_admin:
         _dibujar_admin()
 else:
-    _dibujar_tablero()
+    tab_tablero, tab_historial = st.tabs(["📋 Tablero", "🗂️ Historial"])
+    with tab_tablero:
+        _dibujar_tablero()
+    with tab_historial:
+        _dibujar_historial()
