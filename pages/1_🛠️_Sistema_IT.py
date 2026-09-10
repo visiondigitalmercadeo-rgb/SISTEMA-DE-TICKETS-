@@ -88,6 +88,24 @@ def _dibujar_tablero():
                         unsafe_allow_html=True,
                     )
                     st.caption(f"{t['categoria']} · {t.get('empresa') or '—'} · {t.get('area') or '—'}")
+
+                    # Cuánto lleva el ticket en su columna ACTUAL (desde que
+                    # entró a ese estado, no desde que se creó) — mismo
+                    # cálculo que el promedio de "Tickets de este mes" de
+                    # arriba (ver database.calcular_kpis_tablero), pero
+                    # aquí por ticket individual, para que se vea de un
+                    # vistazo cuáles llevan más tiempo esperando.
+                    entrada_estado = db.fecha_entro_a_estado_actual(t)
+                    horas_en_estado = None
+                    if entrada_estado:
+                        try:
+                            horas_en_estado = max(
+                                (datetime.now() - datetime.fromisoformat(entrada_estado)).total_seconds() / 3600, 0.0,
+                            )
+                        except ValueError:
+                            pass
+                    st.caption(f"⏱️ Lleva {formatear_horas(horas_en_estado)} en '{estado}'")
+
                     # "contacto" es el campo viejo (antes de separar correo y
                     # teléfono) — se usa como respaldo solo para tickets
                     # creados antes de ese cambio.
