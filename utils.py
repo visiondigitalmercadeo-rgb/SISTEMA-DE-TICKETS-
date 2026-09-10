@@ -107,13 +107,19 @@ def _fecha_corta(iso_txt):
     return f"{iso_txt[8:10]}/{iso_txt[5:7]}/{iso_txt[0:4]}"
 
 
-def orden_solicitud_pdf_bytes(ticket: dict) -> bytes:
-    """Genera la 'Orden de Solicitud' en PDF de un ticket — se manda como
+def orden_trabajo_pdf_bytes(ticket: dict) -> bytes:
+    """Genera la 'Orden de Trabajo' en PDF de un ticket — se manda como
     adjunto al crear el ticket (al solicitante y al personal de soporte de
     esa categoría) y también cuando se asigna a un técnico en particular
     (ver database.enviar_orden_ticket). Lleva el logo de la empresa del
     solicitante: Visión Digital usa el suyo, y Vitatrac GT/HN comparten el
-    logo de Vitatrac (ver config.LOGO_POR_EMPRESA). Se genera siempre al
+    logo de Vitatrac (ver config.LOGO_POR_EMPRESA). Si el ticket tiene una
+    foto/captura adjunta (ticket['foto_b64']) y es una imagen (png/jpg/jpeg
+    — no un PDF, el otro tipo permitido al reportar el problema), se
+    incrusta al final de este mismo documento, en su propia página, en vez
+    de mandarse por separado (ver pages/1_Sistema_IT.py: el botón aparte
+    "📎 archivo adjunto" solo sigue apareciendo para el caso de un PDF
+    adjunto, que no se puede incrustar como imagen). Se genera siempre al
     vuelo a partir de lo que ya está guardado en Firestore — no se guarda
     el PDF en ningún lado."""
     pdf = FPDF(format="Letter")
@@ -135,7 +141,7 @@ def orden_solicitud_pdf_bytes(ticket: dict) -> bytes:
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_xy(caja_x, 12)
-    pdf.cell(caja_w, 8, _pdf_safe("ORDEN DE SOLICITUD No."), border=0, align="C", fill=True)
+    pdf.cell(caja_w, 8, _pdf_safe("ORDEN DE TRABAJO No."), border=0, align="C", fill=True)
 
     numero = ticket.get("numero")
     texto_numero = f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____"
@@ -186,6 +192,29 @@ def orden_solicitud_pdf_bytes(ticket: dict) -> bytes:
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(120, 120, 120)
     pdf.multi_cell(0, 5, _pdf_safe(f"Documento generado automáticamente por Sistema IT — {EMPRESA_NOMBRE}."))
+
+    # -- Foto/captura adjunta, incrustada en su propia página (solo si es
+    # una imagen -- ver el docstring de arriba). "w"/"h" acotan una caja
+    # máxima y keep_aspect_ratio=True hace que la imagen quepa completa
+    # ahí sin recortarse ni desbordar la página, sea horizontal o vertical
+    # (una foto de celular en vertical, por ejemplo).
+    foto_b64 = ticket.get("foto_b64")
+    foto_tipo = (ticket.get("foto_tipo") or "").lower()
+    if foto_b64 and foto_tipo.startswith("image/"):
+        try:
+            import base64
+
+            from fpdf.enums import Align
+
+            foto_bytes = base64.b64decode(foto_b64)
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(0, 8, _pdf_safe("Foto / captura adjunta"), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(2)
+            pdf.image(foto_bytes, x=Align.C, w=190, h=230, keep_aspect_ratio=True)
+        except Exception:
+            pass
 
     return bytes(pdf.output())
 
