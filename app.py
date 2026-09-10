@@ -7,7 +7,7 @@ from config import (
     ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI, FAVICON_PATH, LOGO_SOPORTE_PATH, TICKET_FOTO_MAX_BYTES,
     URGENCIA_DEFECTO, URGENCIA_DESCRIPCION, URGENCIAS_TICKET,
 )
-from utils import archivo_a_b64, orden_solicitud_pdf_bytes, urgencia_badge_html
+from utils import archivo_a_b64, orden_trabajo_pdf_bytes, urgencia_badge_html
 
 st.set_page_config(page_title=f"Soporte TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="centered")
 auth.mostrar_logo_sidebar()
@@ -133,8 +133,8 @@ with tab_consultar:
 
             try:
                 st.download_button(
-                    "📄 Descargar Orden de Solicitud (PDF)",
-                    data=orden_solicitud_pdf_bytes(ticket),
+                    "📄 Descargar Orden de Trabajo (PDF)",
+                    data=orden_trabajo_pdf_bytes(ticket),
                     file_name=f"TI-{ticket['numero']:04d}.pdf", mime="application/pdf",
                     use_container_width=True, key="ti_consulta_descargar_pdf",
                 )
