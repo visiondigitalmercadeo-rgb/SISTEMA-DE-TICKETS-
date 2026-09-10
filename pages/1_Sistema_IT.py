@@ -8,7 +8,7 @@ from config import (
     CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESTADO_EMOJI, ESTADOS_TICKET, FAVICON_PATH, MESES_ES,
     TICKET_SIGUIENTE_ESTADO,
 )
-from utils import formatear_horas, orden_solicitud_pdf_bytes
+from utils import formatear_horas, orden_solicitud_pdf_bytes, urgencia_badge_html
 
 st.set_page_config(page_title=f"Sistema IT — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
 auth.mostrar_logo_sidebar()
@@ -83,7 +83,10 @@ def _dibujar_tablero():
             for t in tickets_col:
                 tid = t["id"]
                 with st.container(border=True):
-                    st.markdown(f"**#TI-{t['numero']:04d}**")
+                    st.markdown(
+                        f"**#TI-{t['numero']:04d}** &nbsp; {urgencia_badge_html(t.get('urgencia'))}",
+                        unsafe_allow_html=True,
+                    )
                     st.caption(f"{t['categoria']} · {t.get('empresa') or '—'} · {t.get('area') or '—'}")
                     # "contacto" es el campo viejo (antes de separar correo y
                     # teléfono) — se usa como respaldo solo para tickets
@@ -221,7 +224,10 @@ def _dibujar_historial():
     for t in lista:
         tid = t["id"]
         with st.container(border=True):
-            st.markdown(f"**#TI-{t['numero']:04d}** — {t['categoria']}")
+            st.markdown(
+                f"**#TI-{t['numero']:04d}** — {t['categoria']} &nbsp; {urgencia_badge_html(t.get('urgencia'))}",
+                unsafe_allow_html=True,
+            )
             st.caption(f"{t.get('empresa') or '—'} · {t.get('area') or '—'}")
             st.markdown(f"👤 {t['nombre_solicitante']}")
             st.write(t["descripcion"][:200] + ("…" if len(t["descripcion"]) > 200 else ""))
