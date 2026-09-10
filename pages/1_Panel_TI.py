@@ -14,6 +14,8 @@ user = auth.current_user()
 with st.sidebar:
     st.markdown(f"**{user['nombre']}**")
     st.caption("Administrador" if user["es_admin"] else "Técnico")
+    if st.button("🔄 Actualizar", use_container_width=True):
+        st.rerun()
     if st.button("🚪 Cerrar sesión", use_container_width=True):
         auth.do_logout()
         st.rerun()
