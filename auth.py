@@ -1,8 +1,10 @@
 """Login del equipo de TI — sistema aparte del de plataforma_ventas (usuario/
-contraseña propios, guardados en la colección "it_usuarios"). Sin roles
-finos: cualquier técnico activo puede atender cualquier ticket; "es_admin"
-solo controla quién puede agregar/desactivar compañeros del equipo (ver
-pages/1_Panel_TI.py)."""
+contraseña propios, guardados en la colección "it_usuarios"). "es_admin"
+controla quién puede entrar a la pestaña de Administrador (administrar
+usuarios: crear, editar, restablecer contraseña, subir/quitar admin,
+activar/desactivar y eliminar). "categorias_acceso" es aparte: qué tipos de
+ticket puede atender cada técnico (se usa solo para filtrar a quién se
+puede asignar un ticket, ver pages/1_Panel_TI.py)."""
 
 import streamlit as st
 
