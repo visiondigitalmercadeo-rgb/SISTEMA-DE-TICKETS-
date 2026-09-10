@@ -98,12 +98,15 @@ def orden_solicitud_pdf_bytes(ticket: dict) -> bytes:
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(6)
 
+    # "contacto" es el campo viejo, de antes de separar correo y teléfono —
+    # se usa como respaldo solo para tickets creados antes de ese cambio.
     campos = [
         ("Empresa", ticket.get("empresa") or "—"),
         ("Tienda / área", ticket.get("area") or "—"),
         ("Fecha de solicitud", _fecha_corta(ticket.get("creado_en"))),
         ("Solicitante", ticket.get("nombre_solicitante") or "—"),
-        ("Correo o extensión", ticket.get("contacto") or "—"),
+        ("Correo", ticket.get("correo") or ticket.get("contacto") or "—"),
+        ("Teléfono", ticket.get("telefono") or "—"),
         ("Estado actual", ticket.get("estado") or "—"),
         ("Asignado a", ticket.get("asignado_a_nombre") or "Sin asignar todavía"),
     ]
