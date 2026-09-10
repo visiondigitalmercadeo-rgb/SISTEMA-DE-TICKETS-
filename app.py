@@ -5,8 +5,9 @@ import database as db
 from config import (
     AREAS_POR_EMPRESA, CATEGORIA_DESCRIPCION, CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET,
     ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI, FAVICON_PATH, LOGO_SOPORTE_PATH, TICKET_FOTO_MAX_BYTES,
+    URGENCIA_DEFECTO, URGENCIA_DESCRIPCION, URGENCIAS_TICKET,
 )
-from utils import archivo_a_b64, orden_solicitud_pdf_bytes
+from utils import archivo_a_b64, orden_solicitud_pdf_bytes, urgencia_badge_html
 
 st.set_page_config(page_title=f"Soporte TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="centered")
 auth.mostrar_logo_sidebar()
@@ -64,6 +65,11 @@ with tab_nuevo:
         "Tipo de solicitud *", CATEGORIAS_TICKET,
         captions=[CATEGORIA_DESCRIPCION[c] for c in CATEGORIAS_TICKET], key=f"ti_categoria_{sufijo}",
     )
+    urgencia = st.radio(
+        "Urgencia *", URGENCIAS_TICKET,
+        captions=[URGENCIA_DESCRIPCION[u] for u in URGENCIAS_TICKET],
+        index=URGENCIAS_TICKET.index(URGENCIA_DEFECTO), horizontal=True, key=f"ti_urgencia_{sufijo}",
+    )
     descripcion = st.text_area("Describe tu problema *", key=f"ti_descripcion_{sufijo}", height=120)
     foto = st.file_uploader(
         "Adjuntar una foto o captura de pantalla (opcional)", type=["png", "jpg", "jpeg", "pdf"],
@@ -89,7 +95,8 @@ with tab_nuevo:
             else:
                 numero = db.create_ticket(
                     nombre, correo, telefono, area_final, categoria, descripcion,
-                    empresa=empresa, foto_b64=foto_b64, foto_nombre=foto_nombre, foto_tipo=foto_tipo,
+                    empresa=empresa, urgencia=urgencia, foto_b64=foto_b64, foto_nombre=foto_nombre,
+                    foto_tipo=foto_tipo,
                 )
                 st.session_state["ticket_form_key"] += 1  # limpia el formulario (nuevos keys = nuevos widgets)
                 st.success(
@@ -110,6 +117,7 @@ with tab_consultar:
             st.warning("No se encontró ningún ticket con ese número.")
         else:
             st.markdown(f"### {ESTADO_EMOJI.get(ticket['estado'], '•')} Ticket #TI-{ticket['numero']:04d} — {ticket['estado']}")
+            st.markdown(urgencia_badge_html(ticket.get("urgencia")), unsafe_allow_html=True)
             st.caption(
                 f"{ticket['categoria']} · {ticket.get('empresa') or '—'} · {ticket.get('area') or '—'} · "
                 f"reportado por {ticket['nombre_solicitante']}"
