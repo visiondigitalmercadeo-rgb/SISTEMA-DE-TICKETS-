@@ -43,7 +43,14 @@ def _logo_centrado(path, width):
             unsafe_allow_html=True,
         )
     except Exception:
-        st.image(path, width=width)
+        # Si hasta el respaldo (st.image) falla -por ejemplo porque el
+        # archivo del logo quedó dañado/incompleto en el despliegue-, que
+        # no truene toda la pantalla de inicio de sesión: simplemente se
+        # sigue sin mostrar el logo, pero el login se puede usar igual.
+        try:
+            st.image(path, width=width)
+        except Exception:
+            pass
 
 
 def require_login() -> bool:
