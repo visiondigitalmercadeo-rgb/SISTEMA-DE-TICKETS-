@@ -1,8 +1,11 @@
+from urllib.parse import quote
+
 import streamlit as st
 
 import auth
 import database as db
-from config import CATEGORIAS_TICKET, EMPRESA_NOMBRE, FAVICON_PATH
+from config import CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET, FAVICON_PATH
+from utils import generar_qr_png
 
 st.set_page_config(page_title=f"Administrador — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
 auth.mostrar_logo_sidebar()
@@ -139,6 +142,53 @@ with st.form("form_nuevo_tecnico", clear_on_submit=True):
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
+
+st.divider()
+st.markdown("**📱 Código QR de acceso por empresa**")
+st.caption(
+    "Genera un código QR para cada empresa. Al escanearlo, el solicitante llega directo al "
+    "formulario público de 'Reportar un problema' con esa empresa ya seleccionada — así no tiene "
+    "que escribir el link a mano ni elegir su empresa. Imprímelo o pégalo donde lo necesites (por "
+    "ejemplo, en cada tienda/oficina)."
+)
+
+url_guardada = db.get_url_publica()
+with st.form("form_url_publica"):
+    url_input = st.text_input(
+        "Link público de esta app (el mismo que ya compartes para reportar problemas)",
+        value=url_guardada, placeholder="https://tu-app.streamlit.app",
+    )
+    if st.form_submit_button("💾 Guardar link", use_container_width=True):
+        if not url_input.strip():
+            st.error("Escribe el link público de la app.")
+        else:
+            db.set_url_publica(url_input)
+            st.success("Link guardado.")
+            st.rerun()
+
+url_publica = db.get_url_publica()
+if not url_publica:
+    st.info("Guarda primero el link público de la app (arriba) para poder generar los códigos QR.")
+else:
+    cols_qr = st.columns(len(EMPRESAS_TICKET))
+    for col, emp in zip(cols_qr, EMPRESAS_TICKET):
+        link_empresa = f"{url_publica}?empresa={quote(emp)}"
+        qr_png = generar_qr_png(link_empresa)
+        with col:
+            st.markdown(f"**{emp}**")
+            if qr_png is None:
+                st.error(
+                    "Falta instalar la librería 'qrcode' — agrega `qrcode[pil]` a requirements.txt "
+                    "y reinicia la app."
+                )
+            else:
+                st.image(qr_png, use_container_width=True)
+                st.download_button(
+                    "⬇️ Descargar QR", data=qr_png,
+                    file_name=f"qr_{emp.lower().replace(' ', '_')}.png", mime="image/png",
+                    use_container_width=True, key=f"qr_download_{emp}",
+                )
+            st.caption(link_empresa)
 
 st.divider()
 st.markdown("**✉️ Correos de aviso por categoría**")
