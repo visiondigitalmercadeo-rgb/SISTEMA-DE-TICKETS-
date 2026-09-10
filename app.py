@@ -47,7 +47,12 @@ with tab_nuevo:
     correo = st.text_input("Correo electrónico *", key=f"ti_correo_{sufijo}")
     telefono = st.text_input("Teléfono *", key=f"ti_telefono_{sufijo}")
 
-    empresa = st.selectbox("Empresa", EMPRESAS_TICKET, key=f"ti_empresa_{sufijo}")
+    # Si llegaron aquí escaneando el código QR de una empresa (ver
+    # Administrador → 📱 Código QR de acceso), el link trae "?empresa=..." y
+    # se preselecciona esa empresa en vez de la primera de la lista.
+    _empresa_qp = st.query_params.get("empresa")
+    _empresa_index = EMPRESAS_TICKET.index(_empresa_qp) if _empresa_qp in EMPRESAS_TICKET else 0
+    empresa = st.selectbox("Empresa", EMPRESAS_TICKET, index=_empresa_index, key=f"ti_empresa_{sufijo}")
     areas_disponibles = AREAS_POR_EMPRESA.get(empresa, [])
     area_sel = st.selectbox("Tienda / área", areas_disponibles + [ESCRIBIR_AREA_NUEVA], key=f"ti_area_sel_{sufijo}")
     if area_sel == ESCRIBIR_AREA_NUEVA:
