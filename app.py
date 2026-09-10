@@ -5,7 +5,7 @@ from config import (
     AREAS_POR_EMPRESA, CATEGORIA_DESCRIPCION, CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET,
     ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI, FAVICON_PATH, LOGO_SOPORTE_PATH, TICKET_FOTO_MAX_BYTES,
 )
-from utils import archivo_a_b64
+from utils import archivo_a_b64, orden_solicitud_pdf_bytes
 
 st.set_page_config(page_title=f"Soporte TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="centered")
 try:
@@ -120,3 +120,13 @@ with tab_consultar:
                 with st.expander(f"📜 Historial ({len(historial)})"):
                     for h in historial:
                         st.caption(f"🕒 {(h.get('fecha') or '')[:16].replace('T', ' ')} — {h.get('detalle')}")
+
+            try:
+                st.download_button(
+                    "📄 Descargar Orden de Solicitud (PDF)",
+                    data=orden_solicitud_pdf_bytes(ticket),
+                    file_name=f"TI-{ticket['numero']:04d}.pdf", mime="application/pdf",
+                    use_container_width=True, key="ti_consulta_descargar_pdf",
+                )
+            except Exception:
+                pass
