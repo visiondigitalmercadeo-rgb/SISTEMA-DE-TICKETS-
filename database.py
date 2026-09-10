@@ -498,6 +498,30 @@ def set_it_correos_aviso(categoria: str, correos: list):
     })
 
 
+def get_url_publica() -> str:
+    """Link público de esta app (el que se comparte con los solicitantes para
+    reportar problemas), guardado desde Administrador → 📱 Código QR de
+    acceso. Se usa para armar tanto el texto informativo como los códigos QR
+    por empresa. Cadena vacía si todavía no se ha guardado ninguno."""
+    snap = get_client().collection("it_config").document("url_publica").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("url") or ""
+
+
+def set_url_publica(url: str):
+    """Guarda el link público, normalizándolo: le agrega 'https://' si falta
+    el esquema, y le quita la '/' final (para que quede limpio al pegarle
+    '?empresa=...' en el código QR de cada empresa)."""
+    url = (url or "").strip()
+    if url and not url.lower().startswith(("http://", "https://")):
+        url = "https://" + url
+    url = url.rstrip("/")
+    get_client().collection("it_config").document("url_publica").set({
+        "url": url,
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
 def enviar_avisos_ticket_nuevo(ticket: dict):
     """Manda los avisos por correo de un ticket recién creado (con la Orden
     de Solicitud en PDF adjunta — ver enviar_orden_ticket): a los correos de
