@@ -336,6 +336,15 @@ def agregar_comentario_ticket(ticket_id, autor_nombre, comentario):
     get_client().collection("it_tickets").document(ticket_id).update({"historial": historial})
 
 
+def delete_ticket(ticket_id):
+    """Elimina un ticket permanentemente (no solo lo mueve de estado). Solo
+    debe llamarse desde la UI cuando quien lo pide es administrador (ver
+    pages/1_Sistema_IT.py) — aquí no se vuelve a validar el rol porque esta
+    función ya recibe el ticket_id desde un botón que solo se dibuja para
+    administradores."""
+    get_client().collection("it_tickets").document(ticket_id).delete()
+
+
 # ---------------------------------------------------------------------------
 # Avisos por correo (Gmail) — mismo patrón que ya usa la plataforma comercial
 # para las Minutas de Tienda: si todavía no están las credenciales
