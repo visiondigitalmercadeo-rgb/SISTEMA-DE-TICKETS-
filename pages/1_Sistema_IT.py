@@ -8,7 +8,13 @@ from config import (
 )
 
 st.set_page_config(page_title=f"Sistema IT — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
-st.logo(LOGO_SOPORTE_PATH, size="large")
+try:
+    # Igual que en app.py: si el logo no carga en el despliegue, que no
+    # tumbe toda la página — se sigue viendo el panel normal, solo sin el
+    # logo arriba del listado de páginas.
+    st.logo(LOGO_SOPORTE_PATH, size="large")
+except Exception:
+    pass
 
 if not auth.require_login():
     st.stop()
