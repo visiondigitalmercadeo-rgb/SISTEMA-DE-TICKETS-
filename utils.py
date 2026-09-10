@@ -284,6 +284,8 @@ def informe_kpis_excel_bytes(periodo_texto: str, filtros_texto: str, kpis: dict,
     renglon("Tickets creados", kpis["creados"])
     renglon("Tickets cerrados", kpis["cerrados"])
     renglon("Tiempo promedio de resolución", formatear_horas(kpis["horas_promedio_resolucion"]))
+    renglon("Resolución más rápida", formatear_horas(kpis["horas_resolucion_minima"]))
+    renglon("Resolución más lenta", formatear_horas(kpis["horas_resolucion_maxima"]))
     espacio()
 
     subtitulo("Por tipo de solicitud (rubro)")
@@ -400,6 +402,11 @@ def informe_kpis_pdf_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, k
         ["Tickets creados", "Tickets cerrados", "Tiempo promedio de resolución"],
         [[kpis["creados"], kpis["cerrados"], formatear_horas(kpis["horas_promedio_resolucion"])]],
         [63, 63, 64],
+    )
+    tabla(
+        ["Resolución más rápida", "Resolución más lenta"],
+        [[formatear_horas(kpis["horas_resolucion_minima"]), formatear_horas(kpis["horas_resolucion_maxima"])]],
+        [95, 95],
     )
 
     franja_titulo("Por tipo de solicitud (rubro)")
