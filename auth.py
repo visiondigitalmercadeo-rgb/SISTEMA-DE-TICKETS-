@@ -33,6 +33,27 @@ def do_logout():
     st.session_state.pop("it_user", None)
 
 
+_LOGO_SIDEBAR_CSS = """
+<style>
+[data-testid="stSidebarHeader"] { height: auto !important; padding-bottom: 0.5rem !important; }
+[data-testid="stLogo"] { height: 4.5rem !important; max-height: 4.5rem !important; width: auto !important; }
+</style>
+"""
+
+
+def mostrar_logo_sidebar():
+    """Muestra LOGO_SOPORTE_PATH arriba del listado de páginas de la barra
+    lateral (st.logo), agrandado con CSS — el tamaño máximo que ofrece
+    st.logo por sí solo ("large") se ve muy chico. Se usa en app.py y en
+    cada página de pages/. Si el archivo del logo falla, no truena la
+    página (igual que el resto de imágenes del sistema)."""
+    st.markdown(_LOGO_SIDEBAR_CSS, unsafe_allow_html=True)
+    try:
+        st.logo(LOGO_SOPORTE_PATH, size="large")
+    except Exception:
+        pass
+
+
 def _logo_centrado(path, width):
     import base64
     try:
