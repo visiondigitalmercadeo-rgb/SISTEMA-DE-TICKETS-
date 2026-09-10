@@ -3,11 +3,12 @@ import streamlit as st
 import database as db
 from config import (
     AREAS_POR_EMPRESA, CATEGORIA_DESCRIPCION, CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET,
-    ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI, FAVICON_PATH, LOGO_PATH, TICKET_FOTO_MAX_BYTES,
+    ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI, FAVICON_PATH, LOGO_SOPORTE_PATH, TICKET_FOTO_MAX_BYTES,
 )
 from utils import archivo_a_b64
 
 st.set_page_config(page_title=f"Soporte TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="centered")
+st.logo(LOGO_SOPORTE_PATH, size="large")
 
 if not db.firebase_conectado():
     st.warning(
@@ -18,15 +19,13 @@ if not db.firebase_conectado():
         icon="⚠️",
     )
 
-col_logo, col_titulo = st.columns([1, 4])
+_, col_logo, _ = st.columns([1, 1.2, 1])
 with col_logo:
     try:
-        st.image(LOGO_PATH, width=90)
+        st.image(LOGO_SOPORTE_PATH, use_container_width=True)
     except Exception:
         pass
-with col_titulo:
-    st.title("🎫 Soporte Técnico y de Sistemas")
-    st.caption(f"{EMPRESA_NOMBRE} — cuéntanos qué problema tienes y el equipo de TI te dará seguimiento.")
+st.title("🛠️ Soporte Técnico y de Sistemas")
 
 st.divider()
 
