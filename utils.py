@@ -8,7 +8,10 @@ import base64
 
 from fpdf import FPDF
 
-from config import EMPRESA_NOMBRE, LOGO_ORDEN_VISION_DIGITAL_PATH, LOGO_POR_EMPRESA
+from config import (
+    EMPRESA_NOMBRE, LOGO_ORDEN_VISION_DIGITAL_PATH, LOGO_POR_EMPRESA, URGENCIA_COLOR, URGENCIA_DEFECTO,
+    URGENCIA_EMOJI,
+)
 
 
 def formatear_horas(horas):
@@ -41,6 +44,26 @@ def generar_qr_png(texto: str):
     buffer = io.BytesIO()
     imagen.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def urgencia_badge_html(urgencia: str) -> str:
+    """Chip de HTML (color + ícono) para el nivel de urgencia de un ticket —
+    se usa en las tarjetas del Tablero y del Historial (ver
+    pages/1_Sistema_IT.py) y en 'Consultar un ticket' (ver app.py). Requiere
+    que la página ya haya llamado a auth.mostrar_logo_sidebar() (o cualquier
+    otra que inyecte el CSS global), de donde sale la animación de
+    parpadeo para 'Emergencia'. Se usa siempre con unsafe_allow_html=True —
+    el texto viene solo de config.URGENCIA_* (fijo, nunca de lo que escribe
+    el solicitante), así que es seguro."""
+    color = URGENCIA_COLOR.get(urgencia, URGENCIA_COLOR[URGENCIA_DEFECTO])
+    emoji = URGENCIA_EMOJI.get(urgencia, URGENCIA_EMOJI[URGENCIA_DEFECTO])
+    clase_extra = " urgencia-parpadea" if urgencia == "Emergencia" else ""
+    return (
+        f'<span class="urgencia-chip{clase_extra}" style="'
+        f"display:inline-block;padding:2px 10px;border-radius:999px;"
+        f"background:{color}1a;color:{color};border:1px solid {color}66;"
+        f'font-weight:600;font-size:0.85rem;">{emoji} {urgencia or URGENCIA_DEFECTO}</span>'
+    )
 
 
 def archivo_a_b64(archivo_subido, max_bytes: int):
@@ -139,6 +162,7 @@ def orden_solicitud_pdf_bytes(ticket: dict) -> bytes:
         ("Solicitante", ticket.get("nombre_solicitante") or "—"),
         ("Correo", ticket.get("correo") or ticket.get("contacto") or "—"),
         ("Teléfono", ticket.get("telefono") or "—"),
+        ("Urgencia", ticket.get("urgencia") or URGENCIA_DEFECTO),
         ("Estado actual", ticket.get("estado") or "—"),
         ("Asignado a", ticket.get("asignado_a_nombre") or "Sin asignar todavía"),
     ]
