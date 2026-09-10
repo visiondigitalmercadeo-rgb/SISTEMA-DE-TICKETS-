@@ -746,7 +746,12 @@ def calcular_kpis_dashboard(tickets: list, anio: int, mes: int, categoria: str =
     - por_categoria_cerrados / por_empresa_cerrados: desglose de 'cerrados'.
     - horas_promedio_resolucion: horas promedio desde que se creó un ticket
       hasta que se archivó, sobre los tickets cerrados ese mes (con los
-      filtros aplicados); None si no hubo ninguno en ese periodo."""
+      filtros aplicados); None si no hubo ninguno en ese periodo.
+    - horas_promedio_por_categoria: {categoria: horas_promedio} — lo mismo
+      que 'horas_promedio_resolucion' pero desglosado por rubro (Soporte
+      Técnico / Soporte Oracle), sobre los tickets cerrados ese mes (con los
+      filtros aplicados). Una categoría sin ningún cerrado ese mes
+      simplemente no aparece en el diccionario."""
     def coincide_filtros(t):
         if categoria and t.get("categoria") != categoria:
             return False
@@ -776,6 +781,7 @@ def calcular_kpis_dashboard(tickets: list, anio: int, mes: int, categoria: str =
 
     cerrados = []
     horas_resolucion = []
+    horas_resolucion_por_categoria = {}
     for t in candidatos:
         if not ticket_es_historico(t):
             continue
@@ -792,7 +798,10 @@ def calcular_kpis_dashboard(tickets: list, anio: int, mes: int, categoria: str =
         creado_en = t.get("creado_en")
         if creado_en:
             try:
-                horas_resolucion.append((fecha_cierre - datetime.fromisoformat(creado_en)).total_seconds() / 3600)
+                horas = (fecha_cierre - datetime.fromisoformat(creado_en)).total_seconds() / 3600
+                horas_resolucion.append(horas)
+                cat = t.get("categoria") or "—"
+                horas_resolucion_por_categoria.setdefault(cat, []).append(horas)
             except ValueError:
                 pass
 
@@ -812,4 +821,7 @@ def calcular_kpis_dashboard(tickets: list, anio: int, mes: int, categoria: str =
         "horas_promedio_resolucion": (
             sum(horas_resolucion) / len(horas_resolucion) if horas_resolucion else None
         ),
+        "horas_promedio_por_categoria": {
+            cat: sum(horas) / len(horas) for cat, horas in horas_resolucion_por_categoria.items()
+        },
     }
