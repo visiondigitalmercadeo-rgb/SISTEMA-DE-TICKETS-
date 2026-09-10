@@ -24,6 +24,25 @@ def formatear_horas(horas):
     return f"{horas / 24:.1f} d"
 
 
+def generar_qr_png(texto: str):
+    """Genera un código QR (en PNG, como bytes) para 'texto' — se usa para
+    los códigos QR de acceso por empresa en Administrador (ver
+    pages/3_Administrador.py), donde 'texto' es el link público de la app
+    con la empresa ya elegida (?empresa=...). Devuelve None si la librería
+    'qrcode' no está instalada (por ejemplo, si todavía no se actualizó
+    requirements.txt en el despliegue) para que la página lo avise en vez
+    de tronar."""
+    try:
+        import io
+        import qrcode
+    except ImportError:
+        return None
+    imagen = qrcode.make(texto, box_size=8, border=2)
+    buffer = io.BytesIO()
+    imagen.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def archivo_a_b64(archivo_subido, max_bytes: int):
     """Convierte un archivo de st.file_uploader a base64. Retorna
     (b64_str, nombre, tipo) o lanza ValueError si pesa más de lo permitido
