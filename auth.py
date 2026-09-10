@@ -36,15 +36,41 @@ def do_logout():
 # CSS global de todas las páginas internas (se inyecta una vez, desde
 # mostrar_logo_sidebar(), que se llama al inicio de app.py y de cada página
 # de pages/):
-#   1) Agranda el logo de la barra lateral — el tamaño máximo que ofrece
-#      st.logo por sí solo ("large") se queda chico.
+#   1) Agranda el logo de la barra lateral y lo centra en la columna gris —
+#      el tamaño máximo que ofrece st.logo por sí solo ("large") se queda
+#      chico. OJO: el elemento del logo NO lleva data-testid="stLogo" (esa
+#      es solo su clase CSS) — el atributo real es
+#      data-testid="stSidebarLogo" (confirmado inspeccionando el DOM
+#      renderizado con Playwright); una versión anterior de este CSS
+#      apuntaba al selector equivocado y por eso nunca se agrandaba de
+#      verdad, aunque el número se seguía subiendo. Se apunta a ambos
+#      (clase e id) por si acaso cambian de nuevo en una versión futura de
+#      Streamlit. Para centrarlo sin mover el botón de colapsar (⟪), ese
+#      botón se saca del flujo normal (position:absolute, arriba a la
+#      derecha) y el encabezado centra lo que le queda (el logo) con
+#      justify-content.
 #   2) Define la animación de parpadeo que usa el chip de urgencia
 #      "Emergencia" (ver utils.urgencia_badge_html), para que un ticket de
 #      Emergencia salte a la vista de inmediato en el tablero.
 _GLOBAL_CSS = """
 <style>
-[data-testid="stSidebarHeader"] { height: auto !important; padding-bottom: 0.5rem !important; }
-[data-testid="stLogo"] { height: 7.5rem !important; max-height: 7.5rem !important; width: auto !important; }
+[data-testid="stSidebarHeader"] {
+    height: auto !important;
+    padding: 0.75rem 0.5rem 0.5rem !important;
+    position: relative !important;
+    justify-content: center !important;
+}
+[data-testid="stSidebarCollapseButton"] {
+    position: absolute !important;
+    top: 0.35rem !important;
+    right: 0.35rem !important;
+}
+.stLogo, [data-testid="stSidebarLogo"] {
+    height: 6.5rem !important;
+    max-height: 6.5rem !important;
+    width: auto !important;
+    max-width: 100% !important;
+}
 
 @keyframes urgencia-parpadeo {
     0%, 100% { opacity: 1; }
