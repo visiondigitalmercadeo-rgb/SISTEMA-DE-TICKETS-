@@ -1,15 +1,18 @@
 """Utilidades chicas: convertir una foto/captura adjunta a base64 con un
 límite de tamaño seguro (mismo concepto que plataforma_ventas: Firestore
-tiene un límite duro de 1 MiB por documento), y generar el PDF de la 'Orden
+tiene un límite duro de 1 MiB por documento), generar el PDF de la 'Orden
 de Solicitud' de un ticket (mismo patrón de plataforma_ventas.utils, que ya
-genera PDFs de minutas/pedidos/diseños con fpdf2)."""
+genera PDFs de minutas/pedidos/diseños con fpdf2), y generar el reporte de
+KPIs del Dashboard en Excel/PDF (ver informe_kpis_excel_bytes /
+informe_kpis_pdf_bytes, usados por pages/2_Dashboard.py)."""
 
 import base64
 
 from fpdf import FPDF
 
 from config import (
-    EMPRESA_NOMBRE, LOGO_ORDEN_VISION_DIGITAL_PATH, LOGO_POR_EMPRESA, URGENCIA_COLOR, URGENCIA_DEFECTO,
+    CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET, ESTADOS_TICKET, ESTADO_EMOJI,
+    LOGO_ORDEN_VISION_DIGITAL_PATH, LOGO_POR_EMPRESA, URGENCIA_COLOR, URGENCIA_DEFECTO,
     URGENCIA_EMOJI,
 )
 
@@ -183,5 +186,270 @@ def orden_solicitud_pdf_bytes(ticket: dict) -> bytes:
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(120, 120, 120)
     pdf.multi_cell(0, 5, _pdf_safe(f"Documento generado automáticamente por Sistema IT — {EMPRESA_NOMBRE}."))
+
+    return bytes(pdf.output())
+
+
+# ---------------------------------------------------------------------------
+# Reporte de KPIs del Dashboard (Excel y PDF ejecutivo) — ver
+# pages/2_Dashboard.py, botones "📥 Descargar este reporte". Ambas funciones
+# reciben:
+#   - periodo_texto: p.ej. "Agosto 2026" (el mes/año que se filtró en el
+#     Dashboard).
+#   - filtros_texto: p.ej. "Tipo: Soporte Técnico · Empresa: Vitatrac GT", o
+#     "Todos los tipos y empresas" si no se filtró nada.
+#   - kpis: el dict que devuelve database.calcular_kpis_dashboard (ya con el
+#     mes/año/tipo/empresa elegidos en el Dashboard aplicados).
+#   - kpis_tablero: el dict que devuelve database.calcular_kpis_tablero (sin
+#     filtro de mes -- es una foto de "ahora mismo": cuántos tickets entraron
+#     este mes calendario y cuánto llevan ahora mismo en cada columna del
+#     tablero), para que el reporte cubra TODOS los KPIs del sistema y no
+#     solo los del Dashboard.
+# ---------------------------------------------------------------------------
+
+def informe_kpis_excel_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, kpis_tablero: dict) -> bytes:
+    """Genera el reporte de KPIs en Excel (.xlsx), con formato claro para
+    revisar en una hoja de cálculo: una tabla por sección (resumen general,
+    por rubro con su tiempo promedio, por empresa, y el resumen en vivo del
+    Tablero). Requiere 'openpyxl' (ver requirements.txt)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "KPIs"
+
+    AZUL_OSCURO = "14243C"
+    GRIS_CLARO = "F2F2F2"
+    BLANCO = "FFFFFF"
+    BORDE = Border(*(Side(style="thin", color="D0D0D0"),) * 4)
+
+    fila = 1
+
+    def titulo(texto, tam=14, negro_sobre_azul=True):
+        nonlocal fila
+        ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=4)
+        celda = ws.cell(row=fila, column=1, value=texto)
+        celda.font = Font(bold=True, size=tam, color=BLANCO if negro_sobre_azul else "000000")
+        if negro_sobre_azul:
+            for c in range(1, 5):
+                ws.cell(row=fila, column=c).fill = PatternFill("solid", fgColor=AZUL_OSCURO)
+        celda.alignment = Alignment(vertical="center")
+        ws.row_dimensions[fila].height = 22 if tam >= 14 else 18
+        fila += 1
+
+    def subtitulo(texto):
+        nonlocal fila
+        ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=4)
+        celda = ws.cell(row=fila, column=1, value=texto)
+        celda.font = Font(bold=True, size=11, color="FFFFFF")
+        for c in range(1, 5):
+            ws.cell(row=fila, column=c).fill = PatternFill("solid", fgColor="2E4053")
+        fila += 1
+
+    def encabezados(*textos):
+        nonlocal fila
+        for i, texto in enumerate(textos, start=1):
+            celda = ws.cell(row=fila, column=i, value=texto)
+            celda.font = Font(bold=True)
+            celda.fill = PatternFill("solid", fgColor=GRIS_CLARO)
+            celda.border = BORDE
+            celda.alignment = Alignment(horizontal="left" if i == 1 else "center")
+        fila += 1
+
+    def renglon(*valores):
+        nonlocal fila
+        for i, valor in enumerate(valores, start=1):
+            celda = ws.cell(row=fila, column=i, value=valor)
+            celda.border = BORDE
+            celda.alignment = Alignment(horizontal="left" if i == 1 else "center")
+        fila += 1
+
+    def espacio():
+        nonlocal fila
+        fila += 1
+
+    titulo(f"Reporte de KPIs — Sistema de Soporte TI — {EMPRESA_NOMBRE}")
+    ws.cell(row=fila, column=1, value=f"Periodo: {periodo_texto}").font = Font(italic=True)
+    fila += 1
+    ws.cell(row=fila, column=1, value=f"Filtros aplicados: {filtros_texto}").font = Font(italic=True)
+    fila += 1
+    from datetime import datetime as _dt
+    ws.cell(row=fila, column=1, value=f"Generado: {_dt.now().strftime('%d/%m/%Y %H:%M')}").font = Font(italic=True, size=9, color="808080")
+    espacio()
+
+    subtitulo("Resumen general del periodo")
+    encabezados("Indicador", "Valor")
+    renglon("Tickets creados", kpis["creados"])
+    renglon("Tickets cerrados", kpis["cerrados"])
+    renglon("Tiempo promedio de resolución", formatear_horas(kpis["horas_promedio_resolucion"]))
+    espacio()
+
+    subtitulo("Por tipo de solicitud (rubro)")
+    encabezados("Rubro", "Creados", "Cerrados", "Tiempo promedio")
+    for cat in CATEGORIAS_TICKET:
+        renglon(
+            cat,
+            kpis["por_categoria_creados"].get(cat, 0),
+            kpis["por_categoria_cerrados"].get(cat, 0),
+            formatear_horas(kpis["horas_promedio_por_categoria"].get(cat)),
+        )
+    espacio()
+
+    subtitulo("Por empresa")
+    encabezados("Empresa", "Creados", "Cerrados")
+    for emp in EMPRESAS_TICKET:
+        renglon(emp, kpis["por_empresa_creados"].get(emp, 0), kpis["por_empresa_cerrados"].get(emp, 0))
+    espacio()
+
+    subtitulo("Resumen en vivo del Tablero (a la fecha de generación)")
+    encabezados("Indicador", "Valor")
+    renglon("Tickets creados este mes calendario", kpis_tablero["tickets_mes"])
+    for cat in CATEGORIAS_TICKET:
+        renglon(f"  {cat} — este mes", kpis_tablero["por_categoria_mes"].get(cat, 0))
+    espacio()
+    encabezados("Estado del tablero", "Tiempo promedio actual")
+    for estado in ESTADOS_TICKET:
+        renglon(estado, formatear_horas(kpis_tablero["horas_promedio_por_estado"].get(estado)))
+
+    anchos = [42, 24, 16, 24]
+    for i, ancho in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+    # Que al imprimir (o exportar a PDF desde Excel) quepan las 4 columnas
+    # en el ancho de una sola hoja, en vez de partirse en varias páginas.
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    import io
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+def informe_kpis_pdf_bytes(periodo_texto: str, filtros_texto: str, kpis: dict, kpis_tablero: dict) -> bytes:
+    """Genera el reporte de KPIs como PDF con estilo de informe ejecutivo
+    gerencial (encabezado con logo, franjas de color por sección, tablas) —
+    listo para imprimir o adjuntar en un correo a Junta Directiva."""
+    from datetime import datetime as _dt
+
+    AZUL_OSCURO = (20, 36, 60)
+    GRIS_CLARO = (242, 242, 242)
+    GRIS_TEXTO = (90, 90, 90)
+
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # -- Encabezado -- (mismo logo "de imprenta" que usa la Orden de
+    # Solicitud -- ver orden_solicitud_pdf_bytes -- que es un archivo mucho
+    # más liviano que el logo_soporte.png de la barra lateral, ideal para
+    # adjuntar en correo a Junta Directiva sin que el PDF pese de más). El
+    # logo es apaisado (ancho ~2.1x su alto) -- a h=14 mide ~29mm de ancho,
+    # así que el texto del título arranca hasta x=48 para no encimarse con
+    # el logo (con h=18 sí se encimaban, ver captura de verificación).
+    try:
+        pdf.image(LOGO_ORDEN_VISION_DIGITAL_PATH, x=10, y=9, h=14)
+    except Exception:
+        pass
+    TEXTO_X = 48
+    pdf.set_xy(TEXTO_X, 10)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_text_color(*AZUL_OSCURO)
+    pdf.cell(0, 7, _pdf_safe("Informe Ejecutivo de KPIs — Sistema de Soporte TI"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(TEXTO_X)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(*GRIS_TEXTO)
+    pdf.cell(0, 6, _pdf_safe(f"{EMPRESA_NOMBRE} · Periodo: {periodo_texto}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(TEXTO_X)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(0, 5, _pdf_safe(f"Filtros aplicados: {filtros_texto}"), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_y(32)
+    pdf.set_draw_color(*AZUL_OSCURO)
+    pdf.set_line_width(0.6)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    def franja_titulo(texto):
+        pdf.set_fill_color(*AZUL_OSCURO)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, _pdf_safe(f"  {texto}"), fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(1)
+
+    def tabla(encabezados, filas, anchos):
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.set_fill_color(*GRIS_CLARO)
+        for texto, ancho in zip(encabezados, anchos):
+            pdf.cell(ancho, 7, _pdf_safe(texto), border=1, align="C", fill=True)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 9.5)
+        for fila_datos in filas:
+            for valor, ancho in zip(fila_datos, anchos):
+                pdf.cell(ancho, 7, _pdf_safe(valor), border=1, align="C")
+            pdf.ln()
+        pdf.ln(4)
+
+    franja_titulo("Resumen general del periodo")
+    tabla(
+        ["Tickets creados", "Tickets cerrados", "Tiempo promedio de resolución"],
+        [[kpis["creados"], kpis["cerrados"], formatear_horas(kpis["horas_promedio_resolucion"])]],
+        [63, 63, 64],
+    )
+
+    franja_titulo("Por tipo de solicitud (rubro)")
+    tabla(
+        ["Rubro", "Creados", "Cerrados", "Tiempo promedio"],
+        [
+            [
+                cat,
+                kpis["por_categoria_creados"].get(cat, 0),
+                kpis["por_categoria_cerrados"].get(cat, 0),
+                formatear_horas(kpis["horas_promedio_por_categoria"].get(cat)),
+            ]
+            for cat in CATEGORIAS_TICKET
+        ],
+        [70, 40, 40, 40],
+    )
+
+    franja_titulo("Por empresa")
+    tabla(
+        ["Empresa", "Creados", "Cerrados"],
+        [
+            [emp, kpis["por_empresa_creados"].get(emp, 0), kpis["por_empresa_cerrados"].get(emp, 0)]
+            for emp in EMPRESAS_TICKET
+        ],
+        [90, 50, 50],
+    )
+
+    if pdf.get_y() > 220:
+        pdf.add_page()
+
+    franja_titulo("Resumen en vivo del Tablero (a la fecha de generación)")
+    filas_tablero = [["Tickets creados este mes calendario", kpis_tablero["tickets_mes"]]]
+    filas_tablero += [
+        [f"  {cat} — este mes", kpis_tablero["por_categoria_mes"].get(cat, 0)] for cat in CATEGORIAS_TICKET
+    ]
+    tabla(["Indicador", "Valor"], filas_tablero, [140, 50])
+    tabla(
+        ["Estado del tablero", "Tiempo promedio que llevan ahí ahora"],
+        [[estado, formatear_horas(kpis_tablero["horas_promedio_por_estado"].get(estado))] for estado in ESTADOS_TICKET],
+        [95, 95],
+    )
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(140, 140, 140)
+    pdf.multi_cell(
+        0, 5,
+        _pdf_safe(
+            f"Informe generado automáticamente por Sistema IT — {EMPRESA_NOMBRE} — "
+            f"{_dt.now().strftime('%d/%m/%Y %H:%M')}."
+        ),
+    )
 
     return bytes(pdf.output())
