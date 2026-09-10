@@ -33,21 +33,35 @@ def do_logout():
     st.session_state.pop("it_user", None)
 
 
-_LOGO_SIDEBAR_CSS = """
+# CSS global de todas las páginas internas (se inyecta una vez, desde
+# mostrar_logo_sidebar(), que se llama al inicio de app.py y de cada página
+# de pages/):
+#   1) Agranda el logo de la barra lateral — el tamaño máximo que ofrece
+#      st.logo por sí solo ("large") se queda chico.
+#   2) Define la animación de parpadeo que usa el chip de urgencia
+#      "Emergencia" (ver utils.urgencia_badge_html), para que un ticket de
+#      Emergencia salte a la vista de inmediato en el tablero.
+_GLOBAL_CSS = """
 <style>
 [data-testid="stSidebarHeader"] { height: auto !important; padding-bottom: 0.5rem !important; }
-[data-testid="stLogo"] { height: 4.5rem !important; max-height: 4.5rem !important; width: auto !important; }
+[data-testid="stLogo"] { height: 7.5rem !important; max-height: 7.5rem !important; width: auto !important; }
+
+@keyframes urgencia-parpadeo {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+.urgencia-parpadea { animation: urgencia-parpadeo 1s ease-in-out infinite; }
 </style>
 """
 
 
 def mostrar_logo_sidebar():
     """Muestra LOGO_SOPORTE_PATH arriba del listado de páginas de la barra
-    lateral (st.logo), agrandado con CSS — el tamaño máximo que ofrece
-    st.logo por sí solo ("large") se ve muy chico. Se usa en app.py y en
-    cada página de pages/. Si el archivo del logo falla, no truena la
-    página (igual que el resto de imágenes del sistema)."""
-    st.markdown(_LOGO_SIDEBAR_CSS, unsafe_allow_html=True)
+    lateral (st.logo) e inyecta el CSS global de la app (ver _GLOBAL_CSS
+    arriba: agranda el logo y define la animación de "Emergencia"). Se usa
+    en app.py y en cada página de pages/. Si el archivo del logo falla, no
+    truena la página (igual que el resto de imágenes del sistema)."""
+    st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
     try:
         st.logo(LOGO_SOPORTE_PATH, size="large")
     except Exception:
