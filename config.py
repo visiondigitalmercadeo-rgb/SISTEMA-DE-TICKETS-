@@ -81,13 +81,16 @@ LOGO_POR_EMPRESA = {
     "Vitatrac HN": LOGO_ORDEN_VITATRAC_PATH,
 }
 
-# Flujo del ticket: 5 columnas del tablero interno (ver pages/1_Sistema_IT.py).
-ESTADOS_TICKET = ["Nuevo", "Asignado", "En proceso", "Resuelto", "Cerrado"]
+# Flujo del ticket: 4 columnas del tablero interno (ver pages/1_Sistema_IT.py).
+# Ya no existe un paso manual a "Cerrado": en cuanto un ticket lleva un día
+# completo como "Resuelto" (es decir, al cambiar de día calendario), sale
+# solo del tablero y pasa a la sección "Historial" — ver
+# database.ticket_es_historico().
+ESTADOS_TICKET = ["Nuevo", "Asignado", "En proceso", "Resuelto"]
 TICKET_SIGUIENTE_ESTADO = {
     "Nuevo": "Asignado",
     "Asignado": "En proceso",
     "En proceso": "Resuelto",
-    "Resuelto": "Cerrado",
 }
 ESTADO_EMOJI = {
     "Nuevo": "🆕", "Asignado": "👤", "En proceso": "🔧", "Resuelto": "✅", "Cerrado": "🔒",
