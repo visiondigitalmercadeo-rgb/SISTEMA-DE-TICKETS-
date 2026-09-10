@@ -25,6 +25,13 @@ FAVICON_PATH = os.path.join(BASE_DIR, "assets", "favicon.png")
 # y en la pantalla de inicio de sesión del equipo de TI (ver auth.py).
 LOGO_SOPORTE_PATH = os.path.join(BASE_DIR, "assets", "logo_soporte.png")
 
+# Logos para la "Orden de Solicitud" en PDF (ver utils.orden_solicitud_pdf_bytes)
+# — cada ticket lleva el logo de la empresa del solicitante (ver
+# EMPRESAS_TICKET más abajo): Visión Digital usa el suyo, y Vitatrac GT y
+# Vitatrac HN comparten el mismo logo de Vitatrac.
+LOGO_ORDEN_VISION_DIGITAL_PATH = os.path.join(BASE_DIR, "assets", "logo_orden_vision_digital.jpg")
+LOGO_ORDEN_VITATRAC_PATH = os.path.join(BASE_DIR, "assets", "logo_orden_vitatrac.png")
+
 # URL pública de esta app — se actualiza aquí en cuanto Steven la despliegue
 # en Streamlit Cloud y tenga la URL definitiva (se usa solo para armar el
 # texto de "ver más" en algún aviso futuro; hoy no es indispensable).
@@ -66,6 +73,13 @@ AREAS_POR_EMPRESA = {
     ],
 }
 ESCRIBIR_AREA_NUEVA = "✍️ Otra (escribir)"
+
+# Qué logo lleva la Orden de Solicitud en PDF según la empresa del ticket.
+LOGO_POR_EMPRESA = {
+    EMPRESA_NOMBRE: LOGO_ORDEN_VISION_DIGITAL_PATH,
+    "Vitatrac GT": LOGO_ORDEN_VITATRAC_PATH,
+    "Vitatrac HN": LOGO_ORDEN_VITATRAC_PATH,
+}
 
 # Flujo del ticket: 5 columnas del tablero interno (ver pages/1_Sistema_IT.py).
 ESTADOS_TICKET = ["Nuevo", "Asignado", "En proceso", "Resuelto", "Cerrado"]
