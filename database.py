@@ -26,7 +26,7 @@ from firebase_admin import credentials, firestore
 
 import fake_firestore
 from config import BASE_DIR, CATEGORIAS_TICKET, EMPRESA_NOMBRE, URGENCIA_DEFECTO, URGENCIA_EMOJI
-from utils import orden_solicitud_pdf_bytes
+from utils import orden_trabajo_pdf_bytes
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -185,7 +185,7 @@ def _validar_no_es_ultimo_admin_activo(uid, motivo):
 
 def update_it_usuario_perfil(uid, nombre, username, categorias_acceso=None, correo=None):
     """Edita nombre, usuario (login), correo y las categorías de tickets que
-    puede atender. El correo es el que recibe la Orden de Solicitud en PDF
+    puede atender. El correo es el que recibe la Orden de Trabajo en PDF
     cuando le asignan un ticket (ver enviar_orden_ticket) — puede dejarse
     vacío, simplemente no le llega nada directo a esa persona. No toca
     contraseña, rol ni estado activo/inactivo (ver las funciones dedicadas
@@ -419,7 +419,7 @@ def enviar_correo_aviso(destinatarios, asunto, cuerpo) -> bool:
 
 def enviar_correo_aviso_adjunto(destinatarios, asunto, cuerpo, adjunto_bytes=None, adjunto_nombre=None) -> bool:
     """Igual que enviar_correo_aviso, pero además permite mandar un archivo
-    adjunto (la Orden de Solicitud en PDF — ver utils.orden_solicitud_pdf_bytes
+    adjunto (la Orden de Trabajo en PDF — ver utils.orden_trabajo_pdf_bytes
     / enviar_orden_ticket). Si 'adjunto_bytes' es None manda un correo de
     texto plano normal, sin adjunto. Nunca lanza excepción — mismo
     comportamiento a prueba de fallos que enviar_correo_aviso."""
@@ -453,24 +453,24 @@ def enviar_correo_aviso_adjunto(destinatarios, asunto, cuerpo, adjunto_bytes=Non
 
 
 def enviar_orden_ticket(ticket: dict, destinatarios: list, asunto: str, cuerpo_extra: str = "") -> bool:
-    """Genera la Orden de Solicitud en PDF de 'ticket' (con el logo de la
+    """Genera la Orden de Trabajo en PDF de 'ticket' (con el logo de la
     empresa del solicitante) y la manda por correo a 'destinatarios'. Nunca
     lanza excepción — si algo falla (armar el PDF, mandar el correo, etc.)
     solo queda en el log del servidor."""
     try:
         numero = ticket.get("numero")
         numero_txt = f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____"
-        pdf_bytes = orden_solicitud_pdf_bytes(ticket)
+        pdf_bytes = orden_trabajo_pdf_bytes(ticket)
         cuerpo = (
             (cuerpo_extra + "\n\n" if cuerpo_extra else "")
-            + f"Se adjunta la Orden de Solicitud del ticket {numero_txt} en PDF."
+            + f"Se adjunta la Orden de Trabajo del ticket {numero_txt} en PDF."
         )
         return enviar_correo_aviso_adjunto(
             destinatarios, asunto, cuerpo, adjunto_bytes=pdf_bytes, adjunto_nombre=f"{numero_txt}.pdf",
         )
     except Exception as e:
         import traceback
-        print("ERROR AL PREPARAR LA ORDEN DE SOLICITUD:", e)
+        print("ERROR AL PREPARAR LA ORDEN DE TRABAJO:", e)
         traceback.print_exc()
         return False
 
