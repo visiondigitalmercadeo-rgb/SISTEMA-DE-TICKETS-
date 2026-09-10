@@ -146,6 +146,26 @@ def _dibujar_kpis():
             formatear_horas(kpis["horas_promedio_por_estado"].get(estado)),
         )
 
+    st.markdown("##### 👷 Tickets asignados por técnico")
+    st.caption("Cuántos tickets tiene cada técnico ahora mismo en el tablero (Asignado o En proceso — sin contar los ya Resueltos ni los del Historial).")
+    tecnicos = db.list_it_usuarios(solo_activos=True)
+    en_curso = [t for t in activos if t.get("estado") in ("Asignado", "En proceso")]
+    conteo_por_tecnico = {}
+    for t in en_curso:
+        nombre = t.get("asignado_a_nombre") or "Sin asignar"
+        conteo_por_tecnico[nombre] = conteo_por_tecnico.get(nombre, 0) + 1
+    filas_tecnicos = [
+        {"Técnico": t["nombre"], "Tickets asignados": conteo_por_tecnico.get(t["nombre"], 0)}
+        for t in tecnicos
+    ]
+    sin_asignar = conteo_por_tecnico.get("Sin asignar", 0)
+    if sin_asignar:
+        filas_tecnicos.append({"Técnico": "Sin asignar", "Tickets asignados": sin_asignar})
+    if filas_tecnicos:
+        st.dataframe(filas_tecnicos, use_container_width=True, hide_index=True)
+    else:
+        st.caption("Todavía no hay técnicos registrados.")
+
     st.divider()
 
 
