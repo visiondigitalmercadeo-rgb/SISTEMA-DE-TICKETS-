@@ -25,7 +25,7 @@ FAVICON_PATH = os.path.join(BASE_DIR, "assets", "favicon.png")
 # y en la pantalla de inicio de sesión del equipo de TI (ver auth.py).
 LOGO_SOPORTE_PATH = os.path.join(BASE_DIR, "assets", "logo_soporte.png")
 
-# Logos para la "Orden de Solicitud" en PDF (ver utils.orden_solicitud_pdf_bytes)
+# Logos para la "Orden de Trabajo" en PDF (ver utils.orden_trabajo_pdf_bytes)
 # — cada ticket lleva el logo de la empresa del solicitante (ver
 # EMPRESAS_TICKET más abajo): Visión Digital usa el suyo, y Vitatrac GT y
 # Vitatrac HN comparten el mismo logo de Vitatrac.
@@ -74,7 +74,7 @@ AREAS_POR_EMPRESA = {
 }
 ESCRIBIR_AREA_NUEVA = "✍️ Otra (escribir)"
 
-# Qué logo lleva la Orden de Solicitud en PDF según la empresa del ticket.
+# Qué logo lleva la Orden de Trabajo en PDF según la empresa del ticket.
 LOGO_POR_EMPRESA = {
     EMPRESA_NOMBRE: LOGO_ORDEN_VISION_DIGITAL_PATH,
     "Vitatrac GT": LOGO_ORDEN_VITATRAC_PATH,
@@ -117,7 +117,7 @@ MESES_ES = [
 # ---------------------------------------------------------------------------
 # Urgencia: el propio solicitante la marca al reportar el problema (ver
 # app.py) y el equipo de TI la ve reflejada como color/ícono en cada tarjeta
-# del tablero y del historial, en la Orden de Solicitud en PDF, en "Consultar
+# del tablero y del historial, en la Orden de Trabajo en PDF, en "Consultar
 # un ticket" y en el aviso por correo (ver pages/1_Sistema_IT.py, utils.py,
 # app.py y database.enviar_avisos_ticket_nuevo). "Emergencia" además
 # parpadea en el tablero (ver el CSS en auth.py) para que salte a la vista
