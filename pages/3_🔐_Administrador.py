@@ -49,6 +49,10 @@ def _fila_usuario(t, es_yo):
             if es_yo:
                 st.caption("— tu propia cuenta —")
 
+        if st.button("← Volver a la lista", key=f"volver_lista_{tid}"):
+            st.session_state["admin_editando_id"] = None
+            st.rerun()
+
         tab_editar, tab_clave, tab_permisos = st.tabs(["✏️ Editar", "🔑 Contraseña", "⚙️ Permisos"])
 
         with tab_editar:
@@ -110,15 +114,40 @@ def _fila_usuario(t, es_yo):
                     if st.button("🗑️ Eliminar permanentemente", key=f"del_{tid}", use_container_width=True, disabled=not confirmar):
                         try:
                             db.delete_it_usuario(tid)
+                            st.session_state["admin_editando_id"] = None
                             st.success(f"'{t['nombre']}' fue eliminado.")
                             st.rerun()
                         except ValueError as e:
                             st.error(str(e))
 
 
+st.session_state.setdefault("admin_editando_id", None)
+
 usuarios = db.list_it_usuarios()
-for t in usuarios:
-    _fila_usuario(t, es_yo=(t["id"] == user["id"]))
+editando = next((t for t in usuarios if t["id"] == st.session_state["admin_editando_id"]), None)
+
+if editando:
+    # Solo se muestra el detalle completo (Editar / Contraseña / Permisos)
+    # de la persona seleccionada, para no tener que hacer scroll entre
+    # formularios de todo el equipo para editar a una sola persona.
+    _fila_usuario(editando, es_yo=(editando["id"] == user["id"]))
+else:
+    st.caption(f"{len(usuarios)} cuenta(s) del equipo de TI — selecciona una para editarla.")
+    for t in usuarios:
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([3, 2, 1])
+            with c1:
+                st.markdown(f"**{t['nombre']}** ({t['username']})" + (" 👑 admin" if t.get("es_admin") else ""))
+                accesos = db.categorias_validas_tecnico(t)
+                st.caption("Atiende: " + (", ".join(accesos) if accesos else "todas las categorías"))
+            with c2:
+                st.caption("🟢 Activo" if t.get("activo", True) else "🔴 Desactivado")
+                if t["id"] == user["id"]:
+                    st.caption("— tu propia cuenta —")
+            with c3:
+                if st.button("✏️ Editar", key=f"seleccionar_{t['id']}", use_container_width=True):
+                    st.session_state["admin_editando_id"] = t["id"]
+                    st.rerun()
 
 st.divider()
 st.markdown("**➕ Agregar técnico o administrador**")
