@@ -2,9 +2,13 @@ import streamlit as st
 
 import auth
 import database as db
-from config import CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESTADO_EMOJI, ESTADOS_TICKET, FAVICON_PATH, TICKET_SIGUIENTE_ESTADO
+from config import (
+    CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESTADO_EMOJI, ESTADOS_TICKET, FAVICON_PATH, LOGO_SOPORTE_PATH,
+    TICKET_SIGUIENTE_ESTADO,
+)
 
-st.set_page_config(page_title=f"Panel TI — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
+st.set_page_config(page_title=f"Sistema IT — {EMPRESA_NOMBRE}", page_icon=FAVICON_PATH, layout="wide")
+st.logo(LOGO_SOPORTE_PATH, size="large")
 
 if not auth.require_login():
     st.stop()
@@ -20,7 +24,7 @@ with st.sidebar:
         auth.do_logout()
         st.rerun()
 
-st.title("🛠️ Panel de Soporte TI")
+st.title("🛠️ Sistema IT")
 
 
 def _categorias_validas(tecnico):
@@ -210,6 +214,35 @@ def _dibujar_admin():
                     st.rerun()
                 except ValueError as e:
                     st.error(str(e))
+
+    st.divider()
+    st.markdown("**✉️ Correos de aviso por categoría**")
+    st.caption(
+        "Cada vez que un solicitante reporta un problema, se manda automáticamente un correo a la lista "
+        "de abajo (según la categoría del ticket) y, si el solicitante dejó un correo válido, también se "
+        "le confirma a él que su ticket quedó registrado."
+    )
+    if not db.correo_disponible():
+        st.info(
+            "Todavía no está configurado el correo que manda los avisos (falta conectar una cuenta de "
+            "Gmail en los secretos de Streamlit Cloud — la misma que ya usa la plataforma comercial para "
+            "las Minutas de Tienda; solo hay que copiar el mismo bloque `[gmail_notificaciones]`). "
+            "Mientras tanto no se manda nada, pero puedes ir guardando los correos de una vez."
+        )
+    for categoria in CATEGORIAS_TICKET:
+        correos_actuales = db.get_it_correos_aviso(categoria)
+        with st.form(f"form_correos_aviso_{categoria}"):
+            correos_texto = st.text_area(
+                f"Correos que reciben aviso de tickets de '{categoria}'",
+                value="\n".join(correos_actuales),
+                placeholder="uno por línea, o separados por coma",
+                key=f"correos_aviso_texto_{categoria}", height=80,
+            )
+            if st.form_submit_button(f"💾 Guardar correos de {categoria}", use_container_width=True):
+                nuevos_correos = [c.strip() for c in correos_texto.replace(",", "\n").split("\n") if c.strip()]
+                db.set_it_correos_aviso(categoria, nuevos_correos)
+                st.success("Correos actualizados.")
+                st.rerun()
 
 
 if user["es_admin"]:
