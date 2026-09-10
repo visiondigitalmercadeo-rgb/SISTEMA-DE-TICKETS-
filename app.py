@@ -2,8 +2,8 @@ import streamlit as st
 
 import database as db
 from config import (
-    AREAS, CATEGORIA_DESCRIPCION, CATEGORIAS_TICKET, EMPRESA_NOMBRE, ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI,
-    FAVICON_PATH, LOGO_PATH, TICKET_FOTO_MAX_BYTES,
+    AREAS_POR_EMPRESA, CATEGORIA_DESCRIPCION, CATEGORIAS_TICKET, EMPRESA_NOMBRE, EMPRESAS_TICKET,
+    ESCRIBIR_AREA_NUEVA, ESTADO_EMOJI, FAVICON_PATH, LOGO_PATH, TICKET_FOTO_MAX_BYTES,
 )
 from utils import archivo_a_b64
 
@@ -46,7 +46,9 @@ with tab_nuevo:
     nombre = st.text_input("Nombre completo *", key=f"ti_nombre_{sufijo}")
     contacto = st.text_input("Correo o extensión para contactarte", key=f"ti_contacto_{sufijo}")
 
-    area_sel = st.selectbox("Tienda / área", AREAS + [ESCRIBIR_AREA_NUEVA], key=f"ti_area_sel_{sufijo}")
+    empresa = st.selectbox("Empresa", EMPRESAS_TICKET, key=f"ti_empresa_{sufijo}")
+    areas_disponibles = AREAS_POR_EMPRESA.get(empresa, [])
+    area_sel = st.selectbox("Tienda / área", areas_disponibles + [ESCRIBIR_AREA_NUEVA], key=f"ti_area_sel_{sufijo}")
     if area_sel == ESCRIBIR_AREA_NUEVA:
         area_final = st.text_input("¿Cuál área?", key=f"ti_area_otra_{sufijo}")
     else:
@@ -79,7 +81,7 @@ with tab_nuevo:
             else:
                 numero = db.create_ticket(
                     nombre, contacto, area_final, categoria, descripcion,
-                    foto_b64=foto_b64, foto_nombre=foto_nombre, foto_tipo=foto_tipo,
+                    empresa=empresa, foto_b64=foto_b64, foto_nombre=foto_nombre, foto_tipo=foto_tipo,
                 )
                 st.session_state["ticket_form_key"] += 1  # limpia el formulario (nuevos keys = nuevos widgets)
                 st.success(
@@ -100,7 +102,10 @@ with tab_consultar:
             st.warning("No se encontró ningún ticket con ese número.")
         else:
             st.markdown(f"### {ESTADO_EMOJI.get(ticket['estado'], '•')} Ticket #TI-{ticket['numero']:04d} — {ticket['estado']}")
-            st.caption(f"{ticket['categoria']} · {ticket.get('area') or '—'} · reportado por {ticket['nombre_solicitante']}")
+            st.caption(
+                f"{ticket['categoria']} · {ticket.get('empresa') or '—'} · {ticket.get('area') or '—'} · "
+                f"reportado por {ticket['nombre_solicitante']}"
+            )
             st.write(ticket["descripcion"])
             if ticket.get("asignado_a_nombre"):
                 st.caption(f"👤 Asignado a: {ticket['asignado_a_nombre']}")
