@@ -256,14 +256,15 @@ def get_ticket_por_numero(numero: int):
     return None
 
 
-def create_ticket(nombre_solicitante, contacto, area, categoria, descripcion, empresa=None, foto_b64=None, foto_nombre=None, foto_tipo=None):
+def create_ticket(nombre_solicitante, correo, telefono, area, categoria, descripcion, empresa=None, foto_b64=None, foto_nombre=None, foto_tipo=None):
     numero = _siguiente_numero_ticket()
     ahora = datetime.now().isoformat(timespec="seconds")
     doc_ref = get_client().collection("it_tickets").document()
     datos_ticket = {
         "numero": numero,
         "nombre_solicitante": (nombre_solicitante or "").strip(),
-        "contacto": (contacto or "").strip() or None,
+        "correo": (correo or "").strip() or None,
+        "telefono": (telefono or "").strip() or None,
         "empresa": (empresa or "").strip() or None,
         "area": (area or "").strip() or None,
         "categoria": categoria,
@@ -463,6 +464,12 @@ def _es_correo_valido(texto) -> bool:
     return bool(texto and _EMAIL_RE.match(texto.strip()))
 
 
+def correo_es_valido(texto) -> bool:
+    """Versión pública de _es_correo_valido — la usa el formulario público
+    (app.py) para validar el campo de correo antes de guardar el ticket."""
+    return _es_correo_valido(texto)
+
+
 def get_it_correos_aviso(categoria: str) -> list:
     """Lista de correos del personal de soporte que reciben aviso automático
     cada vez que entra un ticket nuevo de esta categoría (configurable desde
@@ -484,14 +491,21 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
     """Manda los avisos por correo de un ticket recién creado (con la Orden
     de Solicitud en PDF adjunta — ver enviar_orden_ticket): a los correos de
     soporte configurados para esa categoría, y —si el solicitante dejó un
-    correo válido en 'contacto' (no una extensión ni un teléfono)— también a
-    él, para confirmarle que su ticket quedó registrado. Se llama
-    automáticamente desde create_ticket; nunca lanza excepción, para que un
-    problema de correo nunca impida guardar el ticket."""
+    correo válido en 'correo'— también a él, para confirmarle que su ticket
+    quedó registrado. Se llama automáticamente desde create_ticket; nunca
+    lanza excepción, para que un problema de correo nunca impida guardar el
+    ticket."""
     try:
         categoria = ticket.get("categoria")
         numero = ticket.get("numero")
         numero_txt = f"TI-{numero:04d}" if isinstance(numero, int) else "TI-____"
+
+        # "contacto" es el campo viejo (antes de separar correo y teléfono) —
+        # se sigue leyendo aquí solo para que los tickets creados antes de
+        # este cambio no se queden sin mostrar ningún dato de contacto.
+        datos_contacto = ", ".join(
+            filter(None, [ticket.get("correo"), ticket.get("telefono")])
+        ) or ticket.get("contacto")
 
         destinatarios_soporte = get_it_correos_aviso(categoria)
         if destinatarios_soporte:
@@ -501,7 +515,7 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
                 f"Empresa: {ticket.get('empresa') or '—'}\n"
                 f"Tienda / área: {ticket.get('area') or '—'}\n"
                 f"Solicitante: {ticket.get('nombre_solicitante') or '—'}"
-                + (f" ({ticket.get('contacto')})" if ticket.get("contacto") else "") + "\n\n"
+                + (f" ({datos_contacto})" if datos_contacto else "") + "\n\n"
                 f"Problema:\n{ticket.get('descripcion') or '—'}\n\n"
                 f"Entra al Sistema IT para asignarlo y darle seguimiento."
             )
@@ -510,8 +524,8 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
                 cuerpo_extra=cuerpo_soporte,
             )
 
-        contacto = (ticket.get("contacto") or "").strip()
-        if _es_correo_valido(contacto):
+        correo_solicitante = (ticket.get("correo") or ticket.get("contacto") or "").strip()
+        if _es_correo_valido(correo_solicitante):
             cuerpo_solicitante = (
                 f"Hola {ticket.get('nombre_solicitante') or ''},\n\n"
                 f"Recibimos tu solicitud de {categoria} y quedó registrada como el ticket {numero_txt}.\n\n"
@@ -521,7 +535,8 @@ def enviar_avisos_ticket_nuevo(ticket: dict):
                 f"número {numero_txt}."
             )
             enviar_orden_ticket(
-                ticket, [contacto], asunto=f"✅ Recibimos tu ticket {numero_txt}", cuerpo_extra=cuerpo_solicitante,
+                ticket, [correo_solicitante], asunto=f"✅ Recibimos tu ticket {numero_txt}",
+                cuerpo_extra=cuerpo_solicitante,
             )
     except Exception as e:
         import traceback
