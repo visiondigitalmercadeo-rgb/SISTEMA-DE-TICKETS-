@@ -102,3 +102,11 @@ ESTADO_EMOJI = {
 # límite duro de 1 MiB por documento, y el ticket ya lleva descripción +
 # historial de seguimiento en el mismo documento.
 TICKET_FOTO_MAX_BYTES = 350_000  # ~350 KB
+
+# Nombres de mes en español, para los selectores "Mes" de los filtros por
+# mes/año (Historial, Dashboard) — ver pages/1_Sistema_IT.py y
+# pages/2_Dashboard.py.
+MESES_ES = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
